@@ -32,6 +32,9 @@ def fast_skills():
         MultivariateSkill(input_size=20, hidden_size=8, max_steps=5),
         ITransformerSkill(loss="mae", input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5),
         ITransformerSkill(loss="qlike", input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5),
+        ITransformerSkill(
+            loss="mae", path=True, input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5
+        ),
     ]
 
 

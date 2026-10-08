@@ -19,6 +19,7 @@ import random
 
 import numpy as np
 import torch
+from numpy.lib.stride_tricks import sliding_window_view
 from torch import nn
 
 from tsm.config import HORIZON_DAYS
@@ -47,20 +48,32 @@ def log_vol_series(panel: Panel) -> np.ndarray:
     return np.column_stack(columns)
 
 
-def training_positions(series: np.ndarray, input_size: int, horizon: int = HORIZON_DAYS) -> np.ndarray:
-    """Dates usable for training: full window behind them, target inside the panel.
+def training_positions(
+    series: np.ndarray,
+    input_size: int,
+    horizon: int = HORIZON_DAYS,
+    n_targets: int = 1,
+) -> np.ndarray:
+    """Dates usable for training: full window behind them, targets inside the panel.
 
     The target of date ``t`` is row ``t + horizon``, so ``t`` is only usable when
     that row exists. This is what keeps ``fit`` from inventing a target it cannot
-    know yet.
+    know yet. A path head needs the last ``n_targets`` rows up to ``t + horizon``,
+    so it requires all of them.
     """
     rows = len(series)
     if rows <= input_size + horizon:
         return np.empty(0, dtype=int)
     valid = ~np.isnan(series).any(axis=1)
     candidates = np.arange(input_size - 1, rows - horizon)
-    window_ok = np.array([valid[t - input_size + 1 : t + 1].all() for t in candidates])
-    return candidates[window_ok & valid[candidates + horizon]]
+    # Window ending at t starts at t - input_size + 1, so index that start.
+    window_ok = sliding_window_view(valid, input_size).all(axis=1)[candidates - input_size + 1]
+    if n_targets == 1:
+        targets_ok = valid[candidates + horizon]
+    else:
+        offsets = np.arange(horizon - n_targets + 1, horizon + 1)
+        targets_ok = valid[candidates[:, None] + offsets].all(axis=1)
+    return candidates[window_ok & targets_ok]
 
 
 def last_window(series: np.ndarray, input_size: int) -> np.ndarray:
@@ -108,8 +121,10 @@ class ITransformer(nn.Module):
         d_ff: int = 128,
         n_layers: int = 2,
         dropout: float = 0.1,
+        n_outputs: int = 1,
     ) -> None:
         super().__init__()
+        self.n_outputs = n_outputs
         self.embed = nn.Linear(input_size, hidden_size)
         layer = nn.TransformerEncoderLayer(
             d_model=hidden_size,
@@ -119,10 +134,13 @@ class ITransformer(nn.Module):
             batch_first=True,
         )
         self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers, enable_nested_tensor=False)
-        self.head = nn.Linear(hidden_size, 1)
+        self.head = nn.Linear(hidden_size, n_outputs)
 
     def forward(self, windows: torch.Tensor) -> torch.Tensor:
-        """``windows``: ``(batch, stocks, input_size)`` of log-vol. Returns ``(batch, stocks)``.
+        """``windows``: ``(batch, stocks, input_size)`` of log-vol.
+
+        Returns ``(batch, stocks)`` with one output, ``(batch, stocks, n_outputs)``
+        with a path head.
 
         Each stock's window is standardized by its own mean and std, and the
         output is un-standardized with the same two numbers. The network only
@@ -132,8 +150,11 @@ class ITransformer(nn.Module):
         mean = windows.mean(dim=-1, keepdim=True)
         std = windows.std(dim=-1, keepdim=True).clamp_min(1e-6)
         tokens = self.encoder(self.embed((windows - mean) / std))
-        standardized = self.head(tokens).squeeze(-1)
-        return standardized * std.squeeze(-1) + mean.squeeze(-1)
+        standardized = self.head(tokens)
+        if self.n_outputs == 1:
+            # Kept exactly as it was, so the single-output model reproduces bit for bit.
+            return standardized.squeeze(-1) * std.squeeze(-1) + mean.squeeze(-1)
+        return standardized * std + mean
 
 
 class ITransformerSkill(TemporalSkill):
@@ -145,6 +166,7 @@ class ITransformerSkill(TemporalSkill):
     def __init__(
         self,
         loss: str = "mae",
+        path: bool = False,
         name: str | None = None,
         input_size: int = 44,
         hidden_size: int = 64,
@@ -160,7 +182,11 @@ class ITransformerSkill(TemporalSkill):
         if loss not in LOSSES:
             raise ValueError(f"loss must be one of {LOSSES}, got {loss!r}")
         self.loss = loss
-        self.name = name if name is not None else f"itransformer_{loss}"
+        self.path = path
+        # A path head predicts the whole 5-step path; a single head only the 5th value.
+        self.n_outputs = HORIZON_DAYS if path else 1
+        default = f"itransformer_{loss}_path" if path else f"itransformer_{loss}"
+        self.name = name if name is not None else default
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.n_heads = n_heads
@@ -186,20 +212,32 @@ class ITransformerSkill(TemporalSkill):
             d_ff=self.d_ff,
             n_layers=self.n_layers,
             dropout=self.dropout,
+            n_outputs=self.n_outputs,
         )
+
+    def _windows(self, series: np.ndarray, positions: np.ndarray) -> np.ndarray:
+        """``(samples, stocks, input_size)`` in one strided view, no per-date loop."""
+        strided = sliding_window_view(series, self.input_size, axis=0)
+        return strided[positions - self.input_size + 1]
+
+    def _targets(self, series: np.ndarray, positions: np.ndarray) -> np.ndarray:
+        """The 5th value ahead, or the whole 1..5 path as ``(samples, stocks, 5)``."""
+        if not self.path:
+            return series[positions + HORIZON_DAYS]
+        steps = np.arange(1, HORIZON_DAYS + 1)
+        return series[positions[:, None] + steps].transpose(0, 2, 1)
 
     def fit(self, panel: Panel) -> None:
         model = self._build()
         series = log_vol_series(panel)
-        positions = training_positions(series, self.input_size, HORIZON_DAYS)
+        positions = training_positions(series, self.input_size, HORIZON_DAYS, self.n_outputs)
         self.n_train_ = len(positions)
         if self.n_train_ == 0:
             self.model_ = model.eval()
             return
 
-        windows = np.stack([series[t - self.input_size + 1 : t + 1].T for t in positions])
-        x = torch.as_tensor(windows, dtype=torch.float32)
-        y = torch.as_tensor(series[positions + HORIZON_DAYS], dtype=torch.float32)
+        x = torch.as_tensor(self._windows(series, positions), dtype=torch.float32)
+        y = torch.as_tensor(self._targets(series, positions), dtype=torch.float32)
 
         criterion = loss_function(self.loss)
         optimizer = torch.optim.Adam(model.parameters(), lr=self.learning_rate)
@@ -226,10 +264,28 @@ class ITransformerSkill(TemporalSkill):
         window = last_window(log_vol_series(recent), self.input_size)
         x = torch.as_tensor(window.T[None], dtype=torch.float32)
         with torch.no_grad():
-            predicted = self.model_(x).squeeze(0).numpy()
+            out = self.model_(x).squeeze(0).numpy()
+        # With a path head the forecast is the 5th step; the earlier ones only shape training.
+        predicted = out[:, -1] if self.path else out
         return {ticker: max(float(np.exp(value)), MIN_VOL) for ticker, value in zip(panel, predicted)}
 
 
-def build_candidates() -> list[ITransformerSkill]:
-    """The two experiment skills: same architecture, different training loss."""
-    return [ITransformerSkill(loss="mae"), ITransformerSkill(loss="qlike")]
+# Every candidate the experiment runner can be asked for by name on the command line.
+CANDIDATES: dict[str, dict] = {
+    "itransformer_mae": {"loss": "mae"},
+    "itransformer_qlike": {"loss": "qlike"},
+    "itransformer_mae_path": {"loss": "mae", "path": True},
+    "itransformer_qlike_path": {"loss": "qlike", "path": True},
+}
+
+
+def build_candidate(name: str, seed: int = 0) -> ITransformerSkill:
+    """One candidate by name, at a given seed."""
+    if name not in CANDIDATES:
+        raise ValueError(f"unknown candidate {name!r}; available: {', '.join(CANDIDATES)}")
+    return ITransformerSkill(seed=seed, **CANDIDATES[name])
+
+
+def build_candidates(names: list[str] | None = None, seed: int = 0) -> list[ITransformerSkill]:
+    """Several candidates by name; all of them when ``names`` is None."""
+    return [build_candidate(n, seed=seed) for n in (names if names is not None else CANDIDATES)]
