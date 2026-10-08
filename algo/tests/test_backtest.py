@@ -77,8 +77,12 @@ def test_no_future_leakage_in_the_whole_pipeline(panel, monkeypatch):
     assert supervisor_clean == supervisor_dirty
 
     upto = clean["position"] <= CUT
-    forecasts = [c for c in clean.columns if c.startswith(("pred_", "w_"))]
+    forecasts = [c for c in clean.columns if c.startswith(("pred_", "raw_pred_", "c_", "w_"))]
     forecasts += ["supervisor", "confidence", "naive", "equal_weight", "baseline"]
+    # The calibration factors are built from realized outcomes, so they are the most
+    # likely place for a leak: make sure they are in the compared columns.
+    assert {f"c_{s.name}" for s in fast_skills()} <= set(forecasts)
+    assert {f"raw_pred_{s.name}" for s in fast_skills()} <= set(forecasts)
     pd.testing.assert_frame_equal(clean.loc[upto, forecasts], dirty.loc[upto, forecasts])
 
     # Sanity check that the corruption is real and visible after the cut.
@@ -102,3 +106,50 @@ def test_weights_sum_to_one_everywhere(panel, monkeypatch):
     weights = frame[[c for c in frame.columns if c.startswith("w_")]]
     assert weights.sum(axis=1).to_numpy() == pytest.approx(1)
     assert frame["supervisor"].notna().all() and (frame["supervisor"] > 0).all()
+
+
+def test_calibration_scales_the_raw_prediction_by_its_factor(panel, monkeypatch):
+    frame, _ = run(panel, monkeypatch)
+    for name in (s.name for s in fast_skills()):
+        assert frame[f"pred_{name}"].to_numpy() == pytest.approx(
+            (frame[f"raw_pred_{name}"] * frame[f"c_{name}"]).to_numpy(), nan_ok=True
+        )
+        # The raw prediction is kept untouched, and the factor is always usable.
+        assert frame[f"c_{name}"].notna().all() and (frame[f"c_{name}"] > 0).all()
+
+
+def test_calibration_factor_matches_its_definition_on_known_outcomes_only(panel, monkeypatch):
+    """Recompute c by hand for one date: pooled over tickers, last 250 known days, c = 1 with none."""
+    frame, _ = run(panel, monkeypatch)
+    positions = np.sort(frame["position"].unique())
+    name = "short_term"
+    for position in (positions[0], positions[3], positions[len(positions) // 2], positions[-1]):
+        eligible = frame[frame["position"] <= position - 5]
+        keep = np.sort(eligible["position"].unique())[-backtest.CALIBRATION_WINDOW:]
+        window = eligible[eligible["position"].isin(keep)]
+        ratio = (window["realized_vol"] / window[f"raw_pred_{name}"]).replace([np.inf, -np.inf], np.nan).dropna()
+        expected = np.sqrt((ratio**2).mean()) if len(ratio) else 1.0
+        actual = frame.loc[frame["position"] == position, f"c_{name}"].to_numpy()
+        # Pooled over tickers: every ticker on this date shares one factor.
+        assert actual == pytest.approx(actual[0])
+        assert actual[0] == pytest.approx(expected)
+
+
+def test_calibration_is_one_before_any_outcome_is_known(panel, monkeypatch):
+    frame, _ = run(panel, monkeypatch)
+    first = np.sort(frame["position"].unique())[:5]
+    early = frame[frame["position"].isin(first)]
+    for name in (s.name for s in fast_skills()):
+        assert (early[f"c_{name}"] == 1.0).all()
+
+
+def test_calibration_window_forgets_old_outcomes(panel, monkeypatch):
+    """A short window must give different factors than a long one, and both stay leak-free."""
+    frame, _ = run(panel, monkeypatch)
+    names = [s.name for s in fast_skills()]
+    raw = frame.drop(columns=[f"pred_{n}" for n in names]).rename(
+        columns={f"raw_pred_{n}": f"pred_{n}" for n in names}
+    )
+    short = backtest.calibration_factors(raw, names, window=20)
+    long = backtest.calibration_factors(raw, names, window=250)
+    assert not np.allclose(short["short_term"].to_numpy(), long["short_term"].to_numpy())

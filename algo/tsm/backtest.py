@@ -27,6 +27,8 @@ BASELINE_SKILL = "short_term"  # the HAR-RV skill doubles as the baseline
 WINDOW_GRID = (10, 20, 60, 120)
 TEMPERATURE_GRID = (0.02, 0.05, 0.1, 0.25, 1.0)
 
+CALIBRATION_WINDOW = 250  # trading days of already-known outcomes used to calibrate a skill
+
 
 def run_skills(
     panel: Panel,
@@ -59,8 +61,76 @@ def run_skills(
     return pd.DataFrame(rows)
 
 
+def calibration_factors(
+    frame: pd.DataFrame,
+    skill_names: list[str],
+    window: int = CALIBRATION_WINDOW,
+    horizon: int = HORIZON_DAYS,
+) -> dict[str, pd.Series]:
+    """One scale factor per skill and per evaluation date: ``sqrt(mean((realized / predicted)^2))``.
+
+    Skills trained on log-volatility or with MAE predict too low on average, and
+    QLIKE punishes under-prediction, so without this the report would rank models
+    by their bias rather than their skill.
+
+    The factor for a date uses only predictions whose 5-day outcome was already
+    known on that date (position <= position - ``horizon``), pooled over all
+    tickers, limited to the last ``window`` trading days of them. With fewer known
+    days it uses all of them; with none the factor is 1.
+
+    Returns one Series per skill, indexed by position.
+    """
+    realized = frame["realized_vol"].to_numpy(dtype=float)
+    positions = frame["position"].to_numpy()
+    dates = np.sort(frame["position"].unique())
+    # Eligible positions for each date: the known ones, capped at the last ``window`` days.
+    hi = np.searchsorted(dates, dates - horizon, side="right")
+    lo = np.maximum(0, hi - window)
+
+    factors = {}
+    for name in skill_names:
+        predicted = frame[f"pred_{name}"].to_numpy(dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            ratio_sq = np.square(realized / predicted)
+        valid = np.isfinite(ratio_sq)
+        totals = pd.DataFrame(
+            {"position": positions, "sum": np.where(valid, ratio_sq, 0.0), "count": valid.astype(float)}
+        )
+        per_date = totals.groupby("position")[["sum", "count"]].sum().reindex(dates, fill_value=0.0)
+        cum_sum = np.concatenate([[0.0], per_date["sum"].to_numpy().cumsum()])
+        cum_count = np.concatenate([[0.0], per_date["count"].to_numpy().cumsum()])
+        total, count = cum_sum[hi] - cum_sum[lo], cum_count[hi] - cum_count[lo]
+        mean = np.divide(total, count, out=np.ones_like(total), where=count > 0)
+        factors[name] = pd.Series(np.sqrt(mean), index=dates)
+    return factors
+
+
+def calibrate(
+    frame: pd.DataFrame,
+    skill_names: list[str],
+    window: int = CALIBRATION_WINDOW,
+    horizon: int = HORIZON_DAYS,
+) -> pd.DataFrame:
+    """Scale every skill's prediction by its calibration factor, keeping the raw value.
+
+    Adds ``raw_pred_<skill>`` (what the skill said) and ``c_<skill>`` (the factor
+    used on that date) and replaces ``pred_<skill>`` with the calibrated value.
+    """
+    frame = frame.copy()
+    factors = calibration_factors(frame, skill_names, window=window, horizon=horizon)
+    for name in skill_names:
+        frame[f"raw_pred_{name}"] = frame[f"pred_{name}"]
+        frame[f"c_{name}"] = frame["position"].map(factors[name])
+        frame[f"pred_{name}"] = frame[f"raw_pred_{name}"] * frame[f"c_{name}"]
+    return frame
+
+
 def add_targets_and_baselines(frame: pd.DataFrame, panel: Panel, skill_names: list[str]) -> pd.DataFrame:
-    """Add what really happened, plus the naive and equal-weight baselines."""
+    """Add what really happened, calibrate the skills, then build the baselines.
+
+    The HAR-RV baseline is ``pred_short_term`` after calibration, so it gets the
+    same treatment as every other skill and the comparison stays fair.
+    """
     frame = frame.copy()
     realized, naive = [], []
     for ticker, group in frame.groupby("ticker", sort=False):
@@ -69,6 +139,7 @@ def add_targets_and_baselines(frame: pd.DataFrame, panel: Panel, skill_names: li
         naive.append(pd.Series(realized_vol(close).to_numpy()[group["position"]], index=group.index))
     frame["realized_vol"] = pd.concat(realized)
     frame["naive"] = pd.concat(naive)
+    frame = calibrate(frame, skill_names)
     frame["equal_weight"] = frame[[f"pred_{s}" for s in skill_names]].mean(axis=1)
     frame["baseline"] = frame[f"pred_{BASELINE_SKILL}"]
     return frame
@@ -124,6 +195,7 @@ def main() -> None:
         "skills": [{"name": s.name, "horizon": s.horizon} for s in skills],
         "supervisor": {"window": supervisor.window, "temperature": supervisor.temperature},
         "test_start": TEST_START,
+        "calibration_window": CALIBRATION_WINDOW,
         "last_date": str(frame["date"].max().date()),
         "runtime_seconds": round(time.time() - started),
     }
