@@ -1,0 +1,9 @@
+pandas
+numpy
+yfinance
+scikit-learn
+torch
+neuralforecast
+arch
+fastapi
+uvicorn

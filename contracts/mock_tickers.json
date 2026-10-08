@@ -1,0 +1,16 @@
+{
+  "tickers": [
+    {
+      "ticker": "AAPL",
+      "name": "Apple Inc."
+    },
+    {
+      "ticker": "TEVA",
+      "name": "Teva Pharmaceutical Industries Ltd."
+    },
+    {
+      "ticker": "NVDA",
+      "name": "NVIDIA Corporation"
+    }
+  ]
+}
