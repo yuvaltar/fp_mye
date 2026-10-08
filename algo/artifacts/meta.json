@@ -19,10 +19,11 @@
     }
   ],
   "supervisor": {
-    "window": 60,
-    "temperature": 0.25
+    "window": 120,
+    "temperature": 0.02
   },
   "test_start": "2020-01-01",
+  "calibration_window": 250,
   "last_date": "2026-10-07",
-  "runtime_seconds": 305
+  "runtime_seconds": 839
 }
