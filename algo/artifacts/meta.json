@@ -1,0 +1,28 @@
+{
+  "model_version": "0.1.0",
+  "skills": [
+    {
+      "name": "short_term",
+      "horizon": "short"
+    },
+    {
+      "name": "regime",
+      "horizon": "long"
+    },
+    {
+      "name": "weak_signals",
+      "horizon": "short"
+    },
+    {
+      "name": "multivariate",
+      "horizon": "medium"
+    }
+  ],
+  "supervisor": {
+    "window": 60,
+    "temperature": 0.25
+  },
+  "test_start": "2020-01-01",
+  "last_date": "2026-10-07",
+  "runtime_seconds": 305
+}
