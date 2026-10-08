@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from tsm import backtest
+from tsm.models.itransformer import ITransformerSkill
 from tsm.skills.base import TemporalSkill
 from tsm.skills.multivariate import MultivariateSkill
 from tsm.skills.regime import RegimeSkill
@@ -19,11 +20,18 @@ CUT = 380  # prices after this row get corrupted
 
 
 def fast_skills():
+    """The committee plus the two experiment candidates, all shrunk to run fast.
+
+    The candidates are not in build_skills, but the leakage rule applies to them
+    just the same, so the whole-pipeline corruption test below covers them too.
+    """
     return [
         ShortTermSkill(),
         RegimeSkill(),
         WeakSignalsSkill(),
         MultivariateSkill(input_size=20, hidden_size=8, max_steps=5),
+        ITransformerSkill(loss="mae", input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5),
+        ITransformerSkill(loss="qlike", input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5),
     ]
 
 
