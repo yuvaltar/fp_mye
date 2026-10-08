@@ -1,0 +1,290 @@
+[
+  {
+    "ticker": "AAPL",
+    "horizon_days": 5,
+    "points": [
+      {
+        "as_of_date": "2026-09-17",
+        "predicted_vol": 0.1872,
+        "baseline_vol": 0.211,
+        "realized_vol": 0.2013
+      },
+      {
+        "as_of_date": "2026-09-18",
+        "predicted_vol": 0.1813,
+        "baseline_vol": 0.1722,
+        "realized_vol": 0.18
+      },
+      {
+        "as_of_date": "2026-09-21",
+        "predicted_vol": 0.179,
+        "baseline_vol": 0.1523,
+        "realized_vol": 0.1788
+      },
+      {
+        "as_of_date": "2026-09-22",
+        "predicted_vol": 0.1925,
+        "baseline_vol": 0.183,
+        "realized_vol": 0.2106
+      },
+      {
+        "as_of_date": "2026-09-23",
+        "predicted_vol": 0.2236,
+        "baseline_vol": 0.1846,
+        "realized_vol": 0.2098
+      },
+      {
+        "as_of_date": "2026-09-24",
+        "predicted_vol": 0.1977,
+        "baseline_vol": 0.2204,
+        "realized_vol": 0.1928
+      },
+      {
+        "as_of_date": "2026-09-25",
+        "predicted_vol": 0.2182,
+        "baseline_vol": 0.2567,
+        "realized_vol": 0.2228
+      },
+      {
+        "as_of_date": "2026-09-28",
+        "predicted_vol": 0.1905,
+        "baseline_vol": 0.1658,
+        "realized_vol": 0.1778
+      },
+      {
+        "as_of_date": "2026-09-29",
+        "predicted_vol": 0.1718,
+        "baseline_vol": 0.1747,
+        "realized_vol": 0.1861
+      },
+      {
+        "as_of_date": "2026-09-30",
+        "predicted_vol": 0.2275,
+        "baseline_vol": 0.2494,
+        "realized_vol": 0.243
+      },
+      {
+        "as_of_date": "2026-10-01",
+        "predicted_vol": 0.2222,
+        "baseline_vol": 0.2315,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-02",
+        "predicted_vol": 0.1634,
+        "baseline_vol": 0.1623,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-05",
+        "predicted_vol": 0.2282,
+        "baseline_vol": 0.2178,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-06",
+        "predicted_vol": 0.2214,
+        "baseline_vol": 0.2092,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-07",
+        "predicted_vol": 0.2251,
+        "baseline_vol": 0.212,
+        "realized_vol": null
+      }
+    ]
+  },
+  {
+    "ticker": "TEVA",
+    "horizon_days": 5,
+    "points": [
+      {
+        "as_of_date": "2026-09-17",
+        "predicted_vol": 0.3871,
+        "baseline_vol": 0.4177,
+        "realized_vol": 0.408
+      },
+      {
+        "as_of_date": "2026-09-18",
+        "predicted_vol": 0.4108,
+        "baseline_vol": 0.4102,
+        "realized_vol": 0.3822
+      },
+      {
+        "as_of_date": "2026-09-21",
+        "predicted_vol": 0.3803,
+        "baseline_vol": 0.3045,
+        "realized_vol": 0.3469
+      },
+      {
+        "as_of_date": "2026-09-22",
+        "predicted_vol": 0.3851,
+        "baseline_vol": 0.3255,
+        "realized_vol": 0.3663
+      },
+      {
+        "as_of_date": "2026-09-23",
+        "predicted_vol": 0.3421,
+        "baseline_vol": 0.3971,
+        "realized_vol": 0.3768
+      },
+      {
+        "as_of_date": "2026-09-24",
+        "predicted_vol": 0.4238,
+        "baseline_vol": 0.4679,
+        "realized_vol": 0.4177
+      },
+      {
+        "as_of_date": "2026-09-25",
+        "predicted_vol": 0.3645,
+        "baseline_vol": 0.3614,
+        "realized_vol": 0.3508
+      },
+      {
+        "as_of_date": "2026-09-28",
+        "predicted_vol": 0.3869,
+        "baseline_vol": 0.4327,
+        "realized_vol": 0.3903
+      },
+      {
+        "as_of_date": "2026-09-29",
+        "predicted_vol": 0.4421,
+        "baseline_vol": 0.4678,
+        "realized_vol": 0.4444
+      },
+      {
+        "as_of_date": "2026-09-30",
+        "predicted_vol": 0.3258,
+        "baseline_vol": 0.328,
+        "realized_vol": 0.3132
+      },
+      {
+        "as_of_date": "2026-10-01",
+        "predicted_vol": 0.4807,
+        "baseline_vol": 0.4205,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-02",
+        "predicted_vol": 0.3737,
+        "baseline_vol": 0.3062,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-05",
+        "predicted_vol": 0.348,
+        "baseline_vol": 0.3271,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-06",
+        "predicted_vol": 0.3298,
+        "baseline_vol": 0.2758,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-07",
+        "predicted_vol": 0.4079,
+        "baseline_vol": 0.371,
+        "realized_vol": null
+      }
+    ]
+  },
+  {
+    "ticker": "NVDA",
+    "horizon_days": 5,
+    "points": [
+      {
+        "as_of_date": "2026-09-17",
+        "predicted_vol": 0.4909,
+        "baseline_vol": 0.3956,
+        "realized_vol": 0.4569
+      },
+      {
+        "as_of_date": "2026-09-18",
+        "predicted_vol": 0.4725,
+        "baseline_vol": 0.5252,
+        "realized_vol": 0.4678
+      },
+      {
+        "as_of_date": "2026-09-21",
+        "predicted_vol": 0.5762,
+        "baseline_vol": 0.499,
+        "realized_vol": 0.5371
+      },
+      {
+        "as_of_date": "2026-09-22",
+        "predicted_vol": 0.4485,
+        "baseline_vol": 0.5182,
+        "realized_vol": 0.4615
+      },
+      {
+        "as_of_date": "2026-09-23",
+        "predicted_vol": 0.5237,
+        "baseline_vol": 0.5047,
+        "realized_vol": 0.563
+      },
+      {
+        "as_of_date": "2026-09-24",
+        "predicted_vol": 0.4044,
+        "baseline_vol": 0.4251,
+        "realized_vol": 0.4272
+      },
+      {
+        "as_of_date": "2026-09-25",
+        "predicted_vol": 0.4706,
+        "baseline_vol": 0.4156,
+        "realized_vol": 0.494
+      },
+      {
+        "as_of_date": "2026-09-28",
+        "predicted_vol": 0.4501,
+        "baseline_vol": 0.472,
+        "realized_vol": 0.4622
+      },
+      {
+        "as_of_date": "2026-09-29",
+        "predicted_vol": 0.5836,
+        "baseline_vol": 0.565,
+        "realized_vol": 0.5622
+      },
+      {
+        "as_of_date": "2026-09-30",
+        "predicted_vol": 0.517,
+        "baseline_vol": 0.4281,
+        "realized_vol": 0.4994
+      },
+      {
+        "as_of_date": "2026-10-01",
+        "predicted_vol": 0.5831,
+        "baseline_vol": 0.6183,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-02",
+        "predicted_vol": 0.5216,
+        "baseline_vol": 0.5159,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-05",
+        "predicted_vol": 0.414,
+        "baseline_vol": 0.3467,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-06",
+        "predicted_vol": 0.3733,
+        "baseline_vol": 0.3535,
+        "realized_vol": null
+      },
+      {
+        "as_of_date": "2026-10-07",
+        "predicted_vol": 0.4948,
+        "baseline_vol": 0.468,
+        "realized_vol": null
+      }
+    ]
+  }
+]

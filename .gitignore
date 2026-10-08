@@ -1,0 +1,19 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+algo/data/
+algo/lightning_logs/
+
+# node
+node_modules/
+.next/
+
+# misc
+.DS_Store

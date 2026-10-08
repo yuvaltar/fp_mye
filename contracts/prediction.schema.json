@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yuvaltar/fp_mye/contracts/prediction.schema.json",
+  "title": "Temporal Skills Market API contract",
+  "description": "Contract between /algo (serves the API) and /web (consumes it). The root of this schema is the response of GET /predict; the other responses live in $defs. All volatilities are annualized 5-trading-day realized volatility expressed as a decimal (0.24 means 24%): sqrt(252/5 * sum of the 5 squared daily log returns). This file only changes with the agreement of both teams.",
+  "x-endpoints": {
+    "GET /predict?ticker=XXX": { "200": "#/$defs/Prediction", "404": "#/$defs/Error" },
+    "GET /tickers": { "200": "#/$defs/TickersResponse" },
+    "GET /history?ticker=XXX": { "200": "#/$defs/HistoryResponse", "404": "#/$defs/Error" }
+  },
+  "$ref": "#/$defs/Prediction",
+  "$defs": {
+    "Ticker": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9.-]{0,9}$",
+      "description": "Upper-case stock symbol as used by Yahoo Finance, e.g. AAPL."
+    },
+    "Volatility": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Annualized 5-trading-day realized volatility, as a decimal."
+    },
+    "SkillPrediction": {
+      "type": "object",
+      "description": "What one skill (agent) predicted and how much the supervisor trusted it.",
+      "additionalProperties": false,
+      "required": ["name", "horizon", "weight", "predicted_vol"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Stable snake_case identifier of the skill, e.g. short_trend."
+        },
+        "horizon": {
+          "enum": ["short", "medium", "long"],
+          "description": "Time scale the skill specializes in: short = about 1-5 trading days of history, medium = about 5-22, long = more than 22."
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Weight assigned by the supervisor. The weights of all skills in one prediction sum to 1."
+        },
+        "predicted_vol": { "$ref": "#/$defs/Volatility" }
+      }
+    },
+    "Prediction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticker",
+        "as_of_date",
+        "horizon_days",
+        "predicted_vol",
+        "baseline_vol",
+        "skills",
+        "supervisor_confidence",
+        "model_version"
+      ],
+      "properties": {
+        "ticker": { "$ref": "#/$defs/Ticker" },
+        "as_of_date": {
+          "type": "string",
+          "format": "date",
+          "description": "Last trading day whose closing price was used (YYYY-MM-DD). The prediction covers the 5 trading days after it."
+        },
+        "horizon_days": {
+          "const": 5,
+          "description": "Number of trading days the prediction covers. Fixed to 5 for the MVP."
+        },
+        "predicted_vol": {
+          "$ref": "#/$defs/Volatility",
+          "description": "Final prediction of the supervisor (the market)."
+        },
+        "baseline_vol": {
+          "$ref": "#/$defs/Volatility",
+          "description": "Prediction of the HAR-RV baseline for the same ticker, date and horizon."
+        },
+        "skills": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/SkillPrediction" }
+        },
+        "supervisor_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "How confident the supervisor is in predicted_vol, from 0 (none) to 1 (full)."
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Version of the engine that produced the prediction, e.g. 0.1.0."
+        }
+      }
+    },
+    "TickersResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tickers"],
+      "properties": {
+        "tickers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ticker", "name"],
+            "properties": {
+              "ticker": { "$ref": "#/$defs/Ticker" },
+              "name": { "type": "string", "minLength": 1, "description": "Company name for display." }
+            }
+          }
+        }
+      }
+    },
+    "HistoryPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["as_of_date", "predicted_vol", "baseline_vol", "realized_vol"],
+      "properties": {
+        "as_of_date": { "type": "string", "format": "date" },
+        "predicted_vol": { "$ref": "#/$defs/Volatility" },
+        "baseline_vol": { "$ref": "#/$defs/Volatility" },
+        "realized_vol": {
+          "anyOf": [{ "$ref": "#/$defs/Volatility" }, { "type": "null" }],
+          "description": "Volatility actually observed over the 5 trading days after as_of_date. null while those 5 days have not all passed yet."
+        }
+      }
+    },
+    "HistoryResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ticker", "horizon_days", "points"],
+      "properties": {
+        "ticker": { "$ref": "#/$defs/Ticker" },
+        "horizon_days": { "const": 5 },
+        "points": {
+          "type": "array",
+          "description": "Past predictions, oldest first, one per as_of_date.",
+          "items": { "$ref": "#/$defs/HistoryPoint" }
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "description": "Body of a non-200 response (FastAPI's default shape), e.g. 404 for an unknown ticker.",
+      "required": ["detail"],
+      "properties": {
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

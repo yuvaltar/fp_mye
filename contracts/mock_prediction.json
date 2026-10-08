@@ -1,0 +1,107 @@
+[
+  {
+    "ticker": "AAPL",
+    "as_of_date": "2026-10-07",
+    "horizon_days": 5,
+    "predicted_vol": 0.2251,
+    "baseline_vol": 0.212,
+    "skills": [
+      {
+        "name": "short_trend",
+        "horizon": "short",
+        "weight": 0.34,
+        "predicted_vol": 0.231
+      },
+      {
+        "name": "weak_signals",
+        "horizon": "short",
+        "weight": 0.16,
+        "predicted_vol": 0.248
+      },
+      {
+        "name": "medium_trend",
+        "horizon": "medium",
+        "weight": 0.31,
+        "predicted_vol": 0.219
+      },
+      {
+        "name": "seasonality",
+        "horizon": "long",
+        "weight": 0.19,
+        "predicted_vol": 0.205
+      }
+    ],
+    "supervisor_confidence": 0.74,
+    "model_version": "0.1.0-mock"
+  },
+  {
+    "ticker": "TEVA",
+    "as_of_date": "2026-10-07",
+    "horizon_days": 5,
+    "predicted_vol": 0.4079,
+    "baseline_vol": 0.371,
+    "skills": [
+      {
+        "name": "short_trend",
+        "horizon": "short",
+        "weight": 0.22,
+        "predicted_vol": 0.402
+      },
+      {
+        "name": "weak_signals",
+        "horizon": "short",
+        "weight": 0.37,
+        "predicted_vol": 0.455
+      },
+      {
+        "name": "medium_trend",
+        "horizon": "medium",
+        "weight": 0.26,
+        "predicted_vol": 0.378
+      },
+      {
+        "name": "seasonality",
+        "horizon": "long",
+        "weight": 0.15,
+        "predicted_vol": 0.352
+      }
+    ],
+    "supervisor_confidence": 0.58,
+    "model_version": "0.1.0-mock"
+  },
+  {
+    "ticker": "NVDA",
+    "as_of_date": "2026-10-07",
+    "horizon_days": 5,
+    "predicted_vol": 0.4948,
+    "baseline_vol": 0.468,
+    "skills": [
+      {
+        "name": "short_trend",
+        "horizon": "short",
+        "weight": 0.41,
+        "predicted_vol": 0.521
+      },
+      {
+        "name": "weak_signals",
+        "horizon": "short",
+        "weight": 0.24,
+        "predicted_vol": 0.497
+      },
+      {
+        "name": "medium_trend",
+        "horizon": "medium",
+        "weight": 0.23,
+        "predicted_vol": 0.474
+      },
+      {
+        "name": "seasonality",
+        "horizon": "long",
+        "weight": 0.12,
+        "predicted_vol": 0.441
+      }
+    ],
+    "supervisor_confidence": 0.66,
+    "model_version": "0.1.0-mock"
+  }
+]
