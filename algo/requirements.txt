@@ -7,3 +7,4 @@ neuralforecast
 arch
 fastapi
 uvicorn
+matplotlib

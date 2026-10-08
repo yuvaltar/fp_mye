@@ -4,8 +4,8 @@ A stock-tracking platform with a multi-agent prediction engine. Each "skill" is 
 
 | Folder | What | Owner |
 | --- | --- | --- |
-| `algo/` | Python 3.11 engine + FastAPI server | Elie, Yuval |
-| `web/` | Next.js 14 + TypeScript + Tailwind site | Maor |
+| `algo/` | Python 3.12 engine + FastAPI server | Elie, Yuval |
+| `web/` | Next.js 16 + TypeScript + Tailwind site | Maor |
 | `contracts/` | API contract (JSON Schema) and mock responses | both teams, by agreement only |
 | `docs/` | 7-day plan, backtest report | both |
 

@@ -47,7 +47,7 @@ Sections, in this order:
    - error per model (bar chart of RMSE or QLIKE).
 6. **Caveats** — anything that weakens the result: short period, few tickers, a skill that failed on some dates, missing data.
 
-Charts need a plotting library. matplotlib is not on the allowed dependency list in `CLAUDE.md`, so ask the user before installing it (or any alternative).
+Draw the charts with matplotlib (allowed in `CLAUDE.md`, listed in `algo/requirements.txt`). Ask the user before installing any other plotting library.
 
 ## 4. Check before finishing
 
