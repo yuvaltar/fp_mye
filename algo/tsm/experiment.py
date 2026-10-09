@@ -45,6 +45,7 @@ DESCRIPTIONS = {
     "itransformer_qlike": "Own PyTorch iTransformer, QLIKE on log-volatility",
     "itransformer_mae_path": "Own PyTorch iTransformer, 5-step path head, MAE over the 5 steps",
     "itransformer_qlike_path": "Own PyTorch iTransformer, 5-step path head, QLIKE over the 5 steps",
+    "itransformer_path_feats": "Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume)",
 }
 SEED_MODELS = ["short_term", "regime", "weak_signals", "multivariate"]
 LABELS = {"short_term": "HAR-RV (short_term)"}
@@ -68,6 +69,21 @@ so their runtime reads as a dash.
 | Date | Experiment | Description | QLIKE | vs HAR-RV | Mean factor | Runtime |
 | --- | --- | --- | ---: | ---: | ---: | ---: |
 """
+
+
+def check_descriptions(names: list[str]) -> None:
+    """Refuse to run a model whose row would have a blank description.
+
+    ``DESCRIPTIONS.get(name, "")`` used to fail silently, so a new candidate
+    wrote empty cells into the table and the only way to notice was to read the
+    file after a 20-minute run. This is checked before the walk-forward starts.
+    """
+    missing = [n for n in [*names, *SEED_MODELS] if n not in DESCRIPTIONS]
+    if missing:
+        raise ValueError(
+            f"no DESCRIPTIONS entry for {', '.join(sorted(set(missing)))}; "
+            f"add one in {__name__} before running, so the table says what was run"
+        )
 
 
 def load_committee(artifacts_dir=ARTIFACTS_DIR) -> tuple[pd.DataFrame, list[str]]:
@@ -166,7 +182,7 @@ def append_rows(
     EXPERIMENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     if not EXPERIMENTS_FILE.exists():
         seeded = [
-            _row(n, LABELS.get(n, f"`{n}`"), DESCRIPTIONS.get(n, ""), table.loc[n], "—", today)
+            _row(n, LABELS.get(n, f"`{n}`"), DESCRIPTIONS[n], table.loc[n], "—", today)
             for n in SEED_MODELS
             if n in table.index
         ]
@@ -177,7 +193,7 @@ def append_rows(
     lines = []
     for label, name, seed in runs:
         experiment = f"`{name}` (seed {seed})" if len(seeds) > 1 else f"`{name}`"
-        lines.append(_row(label, experiment, DESCRIPTIONS.get(name, ""), table.loc[label], f"{runtimes[label]}s", today))
+        lines.append(_row(label, experiment, DESCRIPTIONS[name], table.loc[label], f"{runtimes[label]}s", today))
     if len(seeds) > 1:
         for name in dict.fromkeys(name for _, name, _ in runs):
             labels = [label for label, n, _ in runs if n == name]
@@ -202,6 +218,13 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     names = args.names or list(CANDIDATES)
     seeds = list(dict.fromkeys(args.seeds))
+    # Name first, so an unknown model is not reported as a missing description.
+    unknown = [n for n in names if n not in CANDIDATES]
+    if unknown:
+        raise ValueError(
+            f"unknown candidate {', '.join(unknown)}; available: {', '.join(CANDIDATES)}"
+        )
+    check_descriptions(names)
 
     # Fail on a bad name before spending minutes on the walk-forward.
     runs, skills = [], []

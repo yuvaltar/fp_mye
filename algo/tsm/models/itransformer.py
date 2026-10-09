@@ -5,13 +5,14 @@ with MAE on log-volatility. MAE aims at the typical week and gives up on the
 volatile ones, which is exactly what QLIKE punishes. The library also cannot
 take extra per-stock inputs or a graph, which later steps need.
 
-This module is an experiment. The two skills it builds are deliberately NOT in
+This module is an experiment. The skills it builds are deliberately NOT in
 ``build_skills``: the committee is unchanged until an experiment earns a place.
 
-Layout, per date: each stock's last ``input_size`` days of log(volatility of the
-last 5 days) is one token. Attention therefore runs across stocks, not across
-time, which is what makes it an *inverted* transformer. The output is the log of
-the 5-day forward volatility directly, one number per stock, not a 5-step path.
+Layout, per date: each stock's last ``input_size`` days becomes one token, so
+attention runs across stocks rather than across time, which is what makes it an
+*inverted* transformer. Options widen that token without ever adding tokens:
+``features`` gives each stock 4 channels instead of 1, and ``path`` makes the
+head predict the whole 1..5 day path instead of only the 5th value.
 """
 from __future__ import annotations
 
@@ -22,12 +23,19 @@ import torch
 from numpy.lib.stride_tricks import sliding_window_view
 from torch import nn
 
-from tsm.config import HORIZON_DAYS
+from tsm.config import HORIZON_DAYS, TRADING_DAYS_PER_YEAR
 from tsm.data import Panel
 from tsm.skills.base import MIN_VOL, TemporalSkill
 from tsm.target import realized_vol
 
 LOSSES = ("mae", "qlike")
+
+# Floor for high/low before taking its log, so a degenerate row cannot produce
+# -inf. Cleaned prices are positive and high >= low, so it never binds in practice.
+EPS_RANGE = 1e-6
+
+# Channels per stock when features=True: log vol, log return, log range, log1p volume.
+N_FEATURES = 4
 
 # exp(u) overflows to inf for a wildly wrong forecast, which would poison the
 # gradients. exp(10) = 22026 is far outside any ratio a sane forecast produces,
@@ -46,6 +54,61 @@ def log_vol_series(panel: Panel) -> np.ndarray:
         for frame in panel.values()
     ]
     return np.column_stack(columns)
+
+
+def _tail(panel: Panel, column: str, rows: int) -> np.ndarray:
+    """``(rows, stocks)`` of one price column, newest last."""
+    return np.column_stack([frame[column].to_numpy()[-rows:] for frame in panel.values()])
+
+
+def log_vol_tail(panel: Panel, rows: int) -> np.ndarray:
+    """``(rows, stocks)`` of log(5-day realized vol), in numpy only.
+
+    Same definition as ``log_vol_series`` but without a pandas rolling call per
+    ticker, which is what made ``predict`` cost ~68ms on 52 tickers. Row ``t``
+    still uses only prices up to and including day ``t``.
+    """
+    needed = rows + HORIZON_DAYS + 1
+    closes = _tail(panel, "close", needed)
+    returns = np.log(closes[1:] / closes[:-1])
+    squared = sliding_window_view(returns * returns, HORIZON_DAYS, axis=0).sum(axis=-1)
+    vol = np.sqrt(TRADING_DAYS_PER_YEAR / HORIZON_DAYS * squared)
+    out = np.log(np.maximum(vol, MIN_VOL))
+    if len(out) >= rows:
+        return out[-rows:]
+    head = np.repeat(out[0][None], rows - len(out), axis=0)
+    return np.concatenate([head, out])
+
+
+def feature_tail(panel: Panel, rows: int) -> np.ndarray:
+    """``(rows, stocks, 4)``: log 5-day vol, log return, log range, log1p volume.
+
+    Every channel for day ``t`` uses only data up to and including day ``t``:
+    the vol channel spans t-4..t, the return needs t-1, the other two only t.
+    """
+    vol = log_vol_tail(panel, rows)
+    closes = _tail(panel, "close", rows + 1)
+    returns = np.log(closes[1:] / closes[:-1])
+    highs, lows = _tail(panel, "high", rows), _tail(panel, "low", rows)
+    log_range = np.log(np.clip(highs / lows, EPS_RANGE, None))
+    log_volume = np.log1p(_tail(panel, "volume", rows))
+    return np.stack([vol, returns, log_range, log_volume], axis=-1)
+
+
+def feature_series(panel: Panel) -> np.ndarray:
+    """``(days, stocks, 4)`` over the whole panel, for ``fit``.
+
+    The vol channel comes from ``log_vol_series`` so it matches what the
+    single-channel model trains on, NaNs in the first rows included.
+    """
+    days = len(next(iter(panel.values())))
+    vol = log_vol_series(panel)
+    closes = _tail(panel, "close", days)
+    returns = np.full_like(closes, np.nan)
+    returns[1:] = np.log(closes[1:] / closes[:-1])
+    log_range = np.log(np.clip(_tail(panel, "high", days) / _tail(panel, "low", days), EPS_RANGE, None))
+    log_volume = np.log1p(_tail(panel, "volume", days))
+    return np.stack([vol, returns, log_range, log_volume], axis=-1)
 
 
 def training_positions(
@@ -74,23 +137,6 @@ def training_positions(
         offsets = np.arange(horizon - n_targets + 1, horizon + 1)
         targets_ok = valid[candidates[:, None] + offsets].all(axis=1)
     return candidates[window_ok & targets_ok]
-
-
-def last_window(series: np.ndarray, input_size: int) -> np.ndarray:
-    """The most recent complete ``input_size`` window, as ``(input_size, stocks)``.
-
-    Only ever looks backwards, so it cannot reach past the panel's last row. If
-    the panel is too short, the earliest valid row is repeated to pad.
-    """
-    valid = np.flatnonzero(~np.isnan(series).any(axis=1))
-    if len(valid) == 0:
-        raise ValueError("no row of the log-volatility series is complete")
-    end = int(valid[-1])
-    start = end - input_size + 1
-    if start >= 0:
-        return series[start : end + 1]
-    head = np.repeat(series[valid[0]][None], -start, axis=0)
-    return np.concatenate([head, series[: end + 1]])
 
 
 def loss_function(kind: str):
@@ -122,10 +168,13 @@ class ITransformer(nn.Module):
         n_layers: int = 2,
         dropout: float = 0.1,
         n_outputs: int = 1,
+        n_channels: int = 1,
     ) -> None:
         super().__init__()
         self.n_outputs = n_outputs
-        self.embed = nn.Linear(input_size, hidden_size)
+        self.n_channels = n_channels
+        # One token per stock either way: extra channels widen the token, never add tokens.
+        self.embed = nn.Linear(n_channels * input_size, hidden_size)
         layer = nn.TransformerEncoderLayer(
             d_model=hidden_size,
             nhead=n_heads,
@@ -137,7 +186,7 @@ class ITransformer(nn.Module):
         self.head = nn.Linear(hidden_size, n_outputs)
 
     def forward(self, windows: torch.Tensor) -> torch.Tensor:
-        """``windows``: ``(batch, stocks, input_size)`` of log-vol.
+        """``windows``: ``(batch, stocks, input_size)``, or ``(batch, stocks, channels, input_size)``.
 
         Returns ``(batch, stocks)`` with one output, ``(batch, stocks, n_outputs)``
         with a path head.
@@ -145,8 +194,20 @@ class ITransformer(nn.Module):
         Each stock's window is standardized by its own mean and std, and the
         output is un-standardized with the same two numbers. The network only
         ever sees and predicts shape, never level, so a quiet utility and a wild
-        mid-cap look alike to it.
+        mid-cap look alike to it. With several channels each one is standardized
+        separately, and the output is un-standardized with channel 0 (the vol
+        channel), which is the only channel the target lives on.
         """
+        if windows.dim() == 4:
+            mean = windows.mean(dim=-1, keepdim=True)
+            std = windows.std(dim=-1, keepdim=True).clamp_min(1e-6)
+            tokens = self.encoder(self.embed(((windows - mean) / std).flatten(start_dim=2)))
+            standardized = self.head(tokens)
+            vol_mean, vol_std = mean[:, :, 0], std[:, :, 0]
+            if self.n_outputs == 1:
+                return standardized.squeeze(-1) * vol_std.squeeze(-1) + vol_mean.squeeze(-1)
+            return standardized * vol_std + vol_mean
+
         mean = windows.mean(dim=-1, keepdim=True)
         std = windows.std(dim=-1, keepdim=True).clamp_min(1e-6)
         tokens = self.encoder(self.embed((windows - mean) / std))
@@ -167,6 +228,7 @@ class ITransformerSkill(TemporalSkill):
         self,
         loss: str = "mae",
         path: bool = False,
+        features: bool = False,
         name: str | None = None,
         input_size: int = 44,
         hidden_size: int = 64,
@@ -183,9 +245,11 @@ class ITransformerSkill(TemporalSkill):
             raise ValueError(f"loss must be one of {LOSSES}, got {loss!r}")
         self.loss = loss
         self.path = path
+        self.features = features
         # A path head predicts the whole 5-step path; a single head only the 5th value.
         self.n_outputs = HORIZON_DAYS if path else 1
-        default = f"itransformer_{loss}_path" if path else f"itransformer_{loss}"
+        self.n_channels = N_FEATURES if features else 1
+        default = f"itransformer_{loss}" + ("_path" if path else "") + ("_feats" if features else "")
         self.name = name if name is not None else default
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -213,6 +277,7 @@ class ITransformerSkill(TemporalSkill):
             n_layers=self.n_layers,
             dropout=self.dropout,
             n_outputs=self.n_outputs,
+            n_channels=self.n_channels,
         )
 
     def _windows(self, series: np.ndarray, positions: np.ndarray) -> np.ndarray:
@@ -229,15 +294,21 @@ class ITransformerSkill(TemporalSkill):
 
     def fit(self, panel: Panel) -> None:
         model = self._build()
-        series = log_vol_series(panel)
-        positions = training_positions(series, self.input_size, HORIZON_DAYS, self.n_outputs)
+        if self.features:
+            inputs = feature_series(panel)
+            vol = inputs[..., 0]
+            # A date is usable only when every channel of every stock is there.
+            validity = inputs.reshape(len(inputs), -1)
+        else:
+            inputs = vol = validity = log_vol_series(panel)
+        positions = training_positions(validity, self.input_size, HORIZON_DAYS, self.n_outputs)
         self.n_train_ = len(positions)
         if self.n_train_ == 0:
             self.model_ = model.eval()
             return
 
-        x = torch.as_tensor(self._windows(series, positions), dtype=torch.float32)
-        y = torch.as_tensor(self._targets(series, positions), dtype=torch.float32)
+        x = torch.as_tensor(self._windows(inputs, positions), dtype=torch.float32)
+        y = torch.as_tensor(self._targets(vol, positions), dtype=torch.float32)
 
         criterion = loss_function(self.loss)
         optimizer = torch.optim.Adam(model.parameters(), lr=self.learning_rate)
@@ -254,15 +325,15 @@ class ITransformerSkill(TemporalSkill):
     def predict(self, panel: Panel) -> dict[str, float]:
         if self.model_ is None:
             raise RuntimeError(f"skill {self.name!r} must be fitted before predicting")
-        # Only the tail matters, and rebuilding the series over the whole panel on
-        # every one of 2203 dates is what makes a walk-forward slow. The extra
-        # HORIZON_DAYS rows are what realized_vol needs to fill its first window.
-        recent = {
-            ticker: frame.iloc[-(self.input_size + 2 * HORIZON_DAYS):]
-            for ticker, frame in panel.items()
-        }
-        window = last_window(log_vol_series(recent), self.input_size)
-        x = torch.as_tensor(window.T[None], dtype=torch.float32)
+        # Only the tail matters, and a pandas rolling call per ticker on each of
+        # 2203 dates is what made a walk-forward slow. These build the same
+        # numbers in numpy, about 35x faster on 52 tickers.
+        if self.features:
+            tail = feature_tail(panel, self.input_size)
+            x = torch.as_tensor(tail.transpose(1, 2, 0)[None], dtype=torch.float32)
+        else:
+            tail = log_vol_tail(panel, self.input_size)
+            x = torch.as_tensor(tail.T[None], dtype=torch.float32)
         with torch.no_grad():
             out = self.model_(x).squeeze(0).numpy()
         # With a path head the forecast is the 5th step; the earlier ones only shape training.
@@ -276,6 +347,12 @@ CANDIDATES: dict[str, dict] = {
     "itransformer_qlike": {"loss": "qlike"},
     "itransformer_mae_path": {"loss": "mae", "path": True},
     "itransformer_qlike_path": {"loss": "qlike", "path": True},
+    "itransformer_path_feats": {
+        "loss": "mae",
+        "path": True,
+        "features": True,
+        "name": "itransformer_path_feats",
+    },
 }
 
 

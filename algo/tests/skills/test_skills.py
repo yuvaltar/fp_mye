@@ -33,6 +33,10 @@ CANDIDATES = {
     "itransformer_mae_path": lambda: ITransformerSkill(
         loss="mae", path=True, input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5
     ),
+    "itransformer_path_feats": lambda: ITransformerSkill(
+        loss="mae", path=True, features=True,
+        input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5,
+    ),
 }
 ALL = SKILLS | CANDIDATES
 AS_OF = 300

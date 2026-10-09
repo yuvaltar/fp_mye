@@ -30,3 +30,7 @@ so their runtime reads as a dash.
 | 2026-10-08 | `itransformer_mae_path` (seed 2) | Own PyTorch iTransformer, 5-step path head, MAE over the 5 steps | 0.5069 | +7.2% | 1.289 | 403s |
 | 2026-10-08 | **`itransformer_mae` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.5220 to 0.5247 (width 0.0027) | 0.5237 | +4.1% | 1.307 | 1231s total |
 | 2026-10-08 | **`itransformer_mae_path` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.5026 to 0.5100 (width 0.0073) | 0.5065 | +7.2% | 1.288 | 1253s total |
+| 2026-10-08 | `itransformer_path_feats` (seed 0) | Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume) | 0.4924 | +9.8% | 1.284 | 389s |
+| 2026-10-08 | `itransformer_path_feats` (seed 1) | Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume) | 0.4974 | +8.9% | 1.279 | 385s |
+| 2026-10-08 | `itransformer_path_feats` (seed 2) | Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume) | 0.4948 | +9.4% | 1.278 | 394s |
+| 2026-10-08 | **`itransformer_path_feats` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4924 to 0.4974 (width 0.0050) | 0.4948 | +9.4% | 1.280 | 1168s total |
