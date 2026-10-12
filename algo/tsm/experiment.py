@@ -13,6 +13,12 @@ because a single seed says little about a network this small.
 This command is read-only except for ``docs/experiments.md`` and the
 git-ignored ``algo/experiments/``. It never writes ``artifacts/``, never writes
 ``docs/backtest.md`` and never changes ``build_skills``.
+
+Prices are frozen: it reads the ``algo/data/`` cache as it is and never
+downloads, because the committee it is compared with was built from those
+prices. A fresh download adds days and shifts adjusted closes, which would make
+a candidate's numbers incomparable with the saved ones. A missing cache file
+stops the run.
 """
 from __future__ import annotations
 
@@ -241,7 +247,8 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Read {len(committee)} saved committee predictions for {committee_names}", flush=True)
     print(f"Running {len(skills)} run(s): {', '.join(label for label, _, _ in runs)}", flush=True)
 
-    panel = load_panel()
+    # The prices the saved committee was built from: the cache, never a download.
+    panel = load_panel(cache_only=True)
     candidate_frame, runtimes = run_candidates(panel, skills)
 
     merged = committee.merge(candidate_frame, on=["date", "ticker"], how="inner", validate="one_to_one")

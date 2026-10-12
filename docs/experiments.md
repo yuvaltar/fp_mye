@@ -34,3 +34,4 @@ so their runtime reads as a dash.
 | 2026-10-08 | `itransformer_path_feats` (seed 1) | Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume) | 0.4974 | +8.9% | 1.279 | 385s |
 | 2026-10-08 | `itransformer_path_feats` (seed 2) | Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume) | 0.4948 | +9.4% | 1.278 | 394s |
 | 2026-10-08 | **`itransformer_path_feats` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4924 to 0.4974 (width 0.0050) | 0.4948 | +9.4% | 1.280 | 1168s total |
+| 2026-10-12 | `itransformer_path_feats` | Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume) | 0.4924 | +9.8% | 1.284 | 364s |

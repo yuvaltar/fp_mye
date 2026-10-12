@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Context
 
-The team is 3 junior developers (B.Sc. Computer Science) who do not write code themselves: Claude writes 100% of the code and the team steers through prompts and skills. Never ask them to edit code by hand, and explain every decision in plain language.
+The team is 2 junior developers (B.Sc. Computer Science) who do not write code themselves: Claude writes 100% of the code and the team steers through prompts and skills. Never ask them to edit code by hand, and explain every decision in plain language.
 
 **Temporal Skills Market** is a stock-tracking platform with a multi-agent prediction engine built in.
 
 - Each **skill** is an agent specialized in one time horizon or one signal type (trend, weak signals, seasonality, ...).
 - A **supervisor** dynamically assigns a weight to each skill based on its recent performance. This is the "market".
 - **MVP:** predict 5-trading-day realized volatility for a list of stocks.
-- **Team:** Elie + Yuval own `/algo`; Maor owns `/web`. Total deadline: 7 days (plan in `docs/plan.md`).
+- **Team:** Yuval owns all of `/algo` (the engine, including the iTransformer, the ST-GNN market map and the API); Maor owns `/web`. Elie has left the project and the `algo-elie` branch is inactive. Total deadline: 7 days (plan in `docs/plan.md`).
 
 ## Hard rules
 
@@ -23,20 +23,21 @@ The team is 3 junior developers (B.Sc. Computer Science) who do not write code t
 
 ## Layout
 
-- `algo/` — Python 3.12 engine and FastAPI server. Package `tsm`; one module per skill in `tsm/skills/`.
+- `algo/` — Python 3.12 engine and FastAPI server. Package `tsm`; one module per committee skill in `tsm/skills/`, experimental models in `tsm/models/`.
 - `web/` — Next.js 16 (App Router) + React 19 + TypeScript + Tailwind 4; charts with recharts.
 - `contracts/` — `prediction.schema.json` plus mock responses. The single source of truth for the API; see `contracts/README.md` for the endpoints and the rules the schema cannot express (volatility units, weights summing to 1).
-- `docs/` — `plan.md` (7-day plan) and, later, `backtest.md` (generated; do not hand-edit).
+- `docs/` — `plan.md` (7-day plan), `backtest.md` (the committee's results) and `experiments.md` (one row per candidate run). Both results files are generated; do not hand-edit them.
 - `.claude/skills/` — `add-temporal-skill` and `backtest-report`. Use them rather than improvising those two procedures.
 
-The engine in `algo` is implemented end to end (data, four skills, supervisor, backtest, report, API). The website is still a placeholder page.
+The engine in `algo` is implemented end to end (data, four skills, calibration, supervisor, backtest, report, API, experiment runner). The website is built on the mocks (watchlist, stock page, performance, about) on branch `web-initial-site`, not yet merged into `web`.
 
 ## How the engine fits together
 
 - `tsm/data.py` downloads and caches prices; a **panel** is a dict of ticker to price frame on common dates. `tsm/target.py` defines realized volatility.
-- `tsm/skills/` holds one module per skill, all implementing `TemporalSkill` (`base.py`): `fit(panel)` and `predict(panel) -> {ticker: vol}`. Current skills: `short_term` (HAR-RV, also the baseline), `regime` (GARCH), `weak_signals` (gradient boosting on volume, range, gap and SPY-correlation features), `multivariate` (iTransformer on all tickers jointly).
+- `tsm/skills/` holds one module per skill, all implementing `TemporalSkill` (`base.py`): `fit(panel)` and `predict(panel) -> {ticker: vol}`. Current skills: `short_term` (HAR-RV, also the baseline), `regime` (GARCH), `weak_signals` (gradient boosting on volume, range, gap and SPY-correlation features), `multivariate` (neuralforecast iTransformer on all tickers jointly).
 - `tsm/supervisor.py` holds the skill registry (`build_skills`) and the supervisor: per ticker and date, softmax over minus each skill's average QLIKE on its last predictions whose outcome is already known.
-- `tsm/backtest.py` is the pipeline. It walks forward day by day, handing skills a panel truncated at the as-of date, tunes the supervisor's window and temperature on dates before 2020, and writes `algo/artifacts/predictions.csv` and `meta.json`. `tsm/report.py` turns that into `docs/backtest.md`.
+- `tsm/backtest.py` is the pipeline. It walks forward day by day, handing skills a panel truncated at the as-of date, then **calibrates** every skill: each prediction is multiplied by `c = sqrt(mean((realized / predicted)^2))`, computed per date from the last 250 trading days of outcomes already known on that date, pooled over tickers (raw values kept as `raw_pred_<skill>`, factors as `c_<skill>`). The equal-weight average and the HAR-RV baseline are built from the calibrated predictions. It then tunes the supervisor's window and temperature on dates before 2020, and writes `algo/artifacts/predictions.csv` and `meta.json`. `tsm/report.py` turns that into `docs/backtest.md`.
+- `tsm/models/itransformer.py` is our own PyTorch iTransformer (one token per stock, attention across stocks; options for a 5-step path head and 4 input channels). Its variants are **candidates**, not committee members. `tsm/experiment.py` scores candidates without re-running the committee: it reads the committee's saved `raw_pred_*` columns from `algo/artifacts/predictions.csv`, walks only the candidates forward on the frozen price cache (it never downloads, so it sees the prices the artifacts were built from), calibrates and scores every model exactly as the report does, and appends rows to `docs/experiments.md`. A candidate joins the committee only through `add-temporal-skill`.
 - `tsm/api.py` only serves `algo/artifacts/` in the contract's shapes. It trains nothing, so **new predictions appear only after `python -m tsm.backtest` is re-run** (about the time printed at the end of a run). The artifacts are committed so the API works from a fresh clone.
 
 While the website is not wired to the API, it reads the mock files instead (`NEXT_PUBLIC_USE_MOCKS=true`).
@@ -47,7 +48,8 @@ While the website is not wired to the API, it reads the mock files instead (`NEX
 
 ```bash
 cd algo
-python3.12 -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate     # Unix
+py -3.12 -m venv .venv && source .venv/Scripts/activate   # Windows (Git Bash); or call .venv/Scripts/python.exe directly
 pip install -r requirements-dev.txt        # runtime + pytest + jsonschema
 pytest                                     # all tests
 pytest tests/test_contract.py              # re-validate the mocks against the schema
@@ -55,8 +57,11 @@ pytest tests/test_contract.py::test_mock_tickers   # a single test
 pytest tests/test_backtest.py              # the future-leakage tests
 python -m tsm.data                         # download and cache prices for every covered ticker
 python -m tsm.backtest                     # full pipeline: backtest, artifacts for the API, docs/backtest.md
+python -m tsm.experiment itransformer_path_feats --seeds 0 1 2   # score a candidate, append to docs/experiments.md
 uvicorn tsm.api:app --reload --port 8000   # serve the API (needs the artifacts)
 ```
+
+On Windows, use the Python 3.12 from python.org or winget (`py -3.12`), not an MSYS2/MinGW build: torch and pandas have no wheels for it.
 
 ### web
 
