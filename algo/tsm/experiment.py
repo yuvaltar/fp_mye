@@ -34,7 +34,7 @@ import pandas as pd
 from tsm.backtest import BACKTEST_START, BASELINE_SKILL, TEST_START, calibrate, run_skills
 from tsm.config import ARTIFACTS_DIR, DOCS_DIR, TICKERS
 from tsm.data import Panel, align_panel, load_prices
-from tsm.models.itransformer import CANDIDATES, build_candidate
+from tsm.models.itransformer import CANDIDATES, build_candidate, summarize_gates
 from tsm.report import scored_rows
 from tsm.skills.base import TemporalSkill
 from tsm.supervisor import qlike
@@ -44,6 +44,10 @@ EXPERIMENTS_FILE = DOCS_DIR / "experiments.md"
 META_FILE = ARTIFACTS_DIR / "meta.json"
 # Per-candidate predictions, kept out of git: they are reproducible from a seed.
 EXPERIMENTS_DIR = Path(__file__).resolve().parents[1] / "experiments"
+
+# The validation year: the last full year before the test period, never used to report results.
+# Choices between candidates (e.g. which graph mode wins) are made on it, not on the test QLIKE.
+VALIDATION_START = "2019-01-01"
 
 # One line per model, so the table says what was actually run.
 DESCRIPTIONS = {
@@ -56,6 +60,12 @@ DESCRIPTIONS = {
     "itransformer_mae_path": "Own PyTorch iTransformer, 5-step path head, MAE over the 5 steps",
     "itransformer_qlike_path": "Own PyTorch iTransformer, 5-step path head, QLIKE over the 5 steps",
     "itransformer_path_feats": "Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume)",
+    "itransformer_graph_gnn_corr": "path_feats + graph layer h + g·A·Linear(h), market-adjusted correlation map",
+    "itransformer_graph_gnn_sector": "path_feats + graph layer h + g·A·Linear(h), sector map",
+    "itransformer_graph_gnn_shuffled": "path_feats + graph layer h + g·A·Linear(h), shuffled correlation map (control)",
+    "itransformer_graph_bias_corr": "path_feats + attention bias lambda·S per head and layer, market-adjusted correlation map",
+    "itransformer_graph_bias_sector": "path_feats + attention bias lambda·S per head and layer, sector map",
+    "itransformer_graph_bias_shuffled": "path_feats + attention bias lambda·S per head and layer, shuffled correlation map (control)",
 }
 SEED_MODELS = ["short_term", "regime", "weak_signals", "multivariate"]
 LABELS = {"short_term": "HAR-RV (short_term)"}
@@ -76,9 +86,17 @@ experiment earns a place in it.
 The four committee rows were seeded from the committed backtest and were not timed individually,
 so their runtime reads as a dash.
 
-| Date | Experiment | Description | QLIKE | vs HAR-RV | Mean factor | Runtime |
-| --- | --- | --- | ---: | ---: | ---: | ---: |
+**QLIKE 2019** scores the same calibrated predictions on {validation_year} only, before the test
+period: choices between candidates are made on it, not on the test QLIKE. **Gate** is how much a
+graph model uses the market map after its last refit: `g` for the `gnn` mode, the mean `|λ|` over
+heads and layers for the `bias` mode. Rows written before these two columns existed read a dash.
+
+| Date | Experiment | Description | QLIKE | vs HAR-RV | QLIKE 2019 | Mean factor | Gate | Runtime |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 """
+# The table header before the QLIKE 2019 and Gate columns, and where those two columns go.
+OLD_TABLE_HEADER = "| Date | Experiment | Description | QLIKE | vs HAR-RV | Mean factor | Runtime |"
+NEW_COLUMNS_AT = (5, 7)  # cell positions of QLIKE 2019 and Gate in the new layout
 
 
 def check_descriptions(names: list[str]) -> None:
@@ -144,14 +162,36 @@ def load_committee(artifacts_dir=ARTIFACTS_DIR) -> tuple[pd.DataFrame, list[str]
     return frame[keep].rename(columns=renamed), names
 
 
+def save_gates(skill: TemporalSkill) -> float | None:
+    """Write a graph candidate's gates after every refit; return the last refit's summary.
+
+    Saved as ``algo/experiments/<name>_gates.csv`` (git-ignored), one row per refit.
+    Returns None for a model without a graph.
+    """
+    history = getattr(skill, "gate_history_", [])
+    if not history:
+        return None
+    if skill.graph == "gnn":
+        columns = ["g"]
+    else:
+        columns = [f"lambda_l{layer}_h{head}" for layer in range(skill.n_layers) for head in range(skill.n_heads)]
+    frame = pd.DataFrame([entry["gates"] for entry in history], columns=columns)
+    frame.insert(0, "refit_date", [entry["refit_date"].date() for entry in history])
+    frame.to_csv(EXPERIMENTS_DIR / f"{skill.name}_gates.csv", index=False, float_format="%.6f")
+    return summarize_gates(skill.graph, history[-1]["gates"])
+
+
 def run_candidates(
     panel: Panel,
     skills: list[TemporalSkill],
     verbose: bool = True,
-) -> tuple[pd.DataFrame, dict[str, int]]:
-    """Walk each candidate forward on the same dates, timing and saving them separately."""
+) -> tuple[pd.DataFrame, dict[str, int], dict[str, float]]:
+    """Walk each candidate forward on the same dates, timing and saving them separately.
+
+    Also returns, for graph candidates, the summary of the gates after the last refit.
+    """
     EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
-    parts, runtimes = [], {}
+    parts, runtimes, gates = [], {}, {}
     for skill in skills:
         print(f"Walking {skill.name} forward...", flush=True)
         started = time.time()
@@ -164,17 +204,32 @@ def run_candidates(
         )
         parts.append(out.set_index(["date", "ticker"])[[column]])
         print(f"  {skill.name} done in {runtimes[skill.name]}s -> {path.name}", flush=True)
-    return pd.concat(parts, axis=1).reset_index(), runtimes
+        summary = save_gates(skill)
+        if summary is not None:
+            gates[skill.name] = summary
+            last = ", ".join(f"{v:+.3f}" for v in skill.gate_history_[-1]["gates"])
+            print(f"  gates after the last refit: {last} (summary {summary:.3f})", flush=True)
+    return pd.concat(parts, axis=1).reset_index(), runtimes, gates
+
+
+def validation_rows(frame: pd.DataFrame, start: str = VALIDATION_START, end: str = TEST_START) -> pd.DataFrame:
+    """Rows of the validation year whose outcome is known, picked the way ``scored_rows`` picks the test rows."""
+    rows = frame[
+        (frame["date"] >= pd.Timestamp(start)) & (frame["date"] < pd.Timestamp(end)) & frame["realized_vol"].notna()
+    ]
+    return rows.dropna()
 
 
 def score(frame: pd.DataFrame, names: list[str], test_start: str = TEST_START) -> pd.DataFrame:
-    """Calibrate every model the same way, then score from ``test_start``."""
+    """Calibrate every model the same way, then score from ``test_start`` and on the validation year."""
     calibrated = calibrate(frame, names)
     rows = scored_rows(calibrated, test_start)
+    validation = validation_rows(calibrated, end=test_start)
     baseline = qlike(rows["realized_vol"], rows[f"pred_{BASELINE_SKILL}"]).mean()
     table = pd.DataFrame(
         {
             "QLIKE": {n: qlike(rows["realized_vol"], rows[f"pred_{n}"]).mean() for n in names},
+            "QLIKE_2019": {n: qlike(validation["realized_vol"], validation[f"pred_{n}"]).mean() for n in names},
             "factor": {n: rows[f"c_{n}"].mean() for n in names},
         }
     )
@@ -186,9 +241,11 @@ def score(frame: pd.DataFrame, names: list[str], test_start: str = TEST_START) -
 
 
 def _row(label: str, experiment: str, description: str, row, runtime: str, today: str) -> str:
+    gate = row.get("gate")
+    gate_cell = "—" if gate is None or pd.isna(gate) else f"{gate:.3f}"
     return (
         f"| {today} | {experiment} | {description} | {row['QLIKE']:.4f} | "
-        f"{row['gain']:+.1f}% | {row['factor']:.3f} | {runtime} |"
+        f"{row['gain']:+.1f}% | {row['QLIKE_2019']:.4f} | {row['factor']:.3f} | {gate_cell} | {runtime} |"
     )
 
 
@@ -200,7 +257,9 @@ def _summary_row(name: str, labels: list[str], table: pd.DataFrame, runtimes, se
     row = {
         "QLIKE": mean_qlike,
         "gain": 100 * (1 - mean_qlike / baseline),
+        "QLIKE_2019": part["QLIKE_2019"].mean(),
         "factor": part["factor"].mean(),
+        "gate": part["gate"].mean() if "gate" in part and part["gate"].notna().all() else None,
     }
     seed_list = ", ".join(str(s) for s in seeds)
     description = (
@@ -209,6 +268,33 @@ def _summary_row(name: str, labels: list[str], table: pd.DataFrame, runtimes, se
     )
     total = sum(runtimes[label] for label in labels)
     return _row(name, f"**`{name}` mean of {len(labels)} seeds**", description, row, f"{total}s total", today)
+
+
+def _header() -> str:
+    return HEADER.format(test_start=TEST_START, validation_year=VALIDATION_START[:4])
+
+
+def migrate_table() -> bool:
+    """Bring a table written before QLIKE 2019 and Gate existed to the current layout.
+
+    Earlier rows keep every value they had and read a dash in the two new
+    columns; the text above the table is regenerated. Returns whether anything
+    changed. Rows are written by this module only, so their cells never hold a "|".
+    """
+    lines = EXPERIMENTS_FILE.read_text(encoding="utf-8").splitlines()
+    if OLD_TABLE_HEADER not in lines:
+        return False
+    start = lines.index(OLD_TABLE_HEADER) + 2  # skip the header and its separator
+    rows = []
+    for line in lines[start:]:
+        if not line.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        for position in NEW_COLUMNS_AT:
+            cells.insert(position, "—")
+        rows.append("| " + " | ".join(cells) + " |")
+    EXPERIMENTS_FILE.write_text(_header() + "\n".join(rows) + "\n", encoding="utf-8")
+    return True
 
 
 def append_rows(
@@ -226,9 +312,9 @@ def append_rows(
             for n in SEED_MODELS
             if n in table.index
         ]
-        EXPERIMENTS_FILE.write_text(
-            HEADER.format(test_start=TEST_START) + "\n".join(seeded) + "\n", encoding="utf-8"
-        )
+        EXPERIMENTS_FILE.write_text(_header() + "\n".join(seeded) + "\n", encoding="utf-8")
+    else:
+        migrate_table()
 
     lines = []
     for label, name, seed in runs:
@@ -283,7 +369,7 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Read {len(committee)} saved committee predictions for {committee_names}", flush=True)
     print(f"Running {len(skills)} run(s): {', '.join(label for label, _, _ in runs)}", flush=True)
 
-    candidate_frame, runtimes = run_candidates(panel, skills)
+    candidate_frame, runtimes, gates = run_candidates(panel, skills)
 
     merged = committee.merge(candidate_frame, on=["date", "ticker"], how="inner", validate="one_to_one")
     if len(merged) != len(committee):
@@ -294,6 +380,7 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     table = score(merged, committee_names + [label for label, _, _ in runs])
+    table["gate"] = pd.Series(gates, dtype=float)
     print(f"Scored {table.attrs['scored_rows']} predictions on {table.attrs['scored_dates']} dates")
     print(append_rows(table, runs, runtimes, seeds))
     print(f"Wrote {EXPERIMENTS_FILE} in {round(time.time() - started)}s total")

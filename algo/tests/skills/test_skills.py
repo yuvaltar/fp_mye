@@ -13,6 +13,9 @@ from tsm.supervisor import build_skills
 
 from tests.conftest import corrupt_after
 
+# The graph candidates' "sector" source needs a sector for the synthetic tickers.
+pytestmark = pytest.mark.usefixtures("synthetic_sectors")
+
 SKILLS = {
     "short_term": ShortTermSkill,
     "regime": RegimeSkill,
@@ -37,6 +40,17 @@ CANDIDATES = {
         loss="mae", path=True, features=True,
         input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5,
     ),
+    # path_feats with the market map, every mode and source.
+    **{
+        f"itransformer_graph_{mode}_{source}": (
+            lambda mode=mode, source=source: ITransformerSkill(
+                loss="mae", path=True, features=True, graph=mode, graph_source=source,
+                input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5,
+            )
+        )
+        for mode in ("gnn", "bias")
+        for source in ("corr", "sector", "shuffled")
+    },
 }
 ALL = SKILLS | CANDIDATES
 AS_OF = 300

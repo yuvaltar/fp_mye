@@ -141,3 +141,36 @@ def test_main_refuses_when_a_single_ticker_was_downloaded_again(old_cache):
     with pytest.raises(ValueError, match=r"1 ticker\(s\) \(BBB\)"):
         experiment.main(["itransformer_mae"])
     assert "committee" not in seen and "panel" not in seen
+
+
+def test_migrate_table_adds_the_new_columns_and_keeps_every_value(tmp_path, monkeypatch):
+    path = tmp_path / "experiments.md"
+    old = [
+        "# Experiments", "", "old text", "",
+        experiment.OLD_TABLE_HEADER,
+        "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+        "| 2026-10-08 | `regime` | GARCH(1,1) on daily returns | 0.5342 | +2.2% | 1.065 | — |",
+        "| 2026-10-08 | `itransformer_mae` | Own PyTorch iTransformer, MAE | 0.5244 | +4.0% | 1.319 | 451s |",
+    ]
+    path.write_text("\n".join(old) + "\n", encoding="utf-8")
+    monkeypatch.setattr(experiment, "EXPERIMENTS_FILE", path)
+
+    assert experiment.migrate_table() is True
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = next(line for line in lines if line.startswith("| Date"))
+    assert header == "| Date | Experiment | Description | QLIKE | vs HAR-RV | QLIKE 2019 | Mean factor | Gate | Runtime |"
+    rows = [line for line in lines if line.startswith("| 2026")]
+    assert rows == [
+        "| 2026-10-08 | `regime` | GARCH(1,1) on daily returns | 0.5342 | +2.2% | — | 1.065 | — | — |",
+        "| 2026-10-08 | `itransformer_mae` | Own PyTorch iTransformer, MAE | 0.5244 | +4.0% | — | 1.319 | — | 451s |",
+    ]
+    assert experiment.migrate_table() is False  # already current: nothing to do
+
+
+def test_validation_rows_are_2019_with_a_known_outcome():
+    dates = pd.to_datetime(["2018-12-31", "2019-01-02", "2019-12-31", "2020-01-02", "2019-06-03"])
+    frame = pd.DataFrame(
+        {"date": dates, "realized_vol": [0.2, 0.2, 0.2, 0.2, np.nan], "pred_x": 0.3}
+    )
+    picked = experiment.validation_rows(frame)
+    assert picked["date"].dt.strftime("%Y-%m-%d").tolist() == ["2019-01-02", "2019-12-31"]

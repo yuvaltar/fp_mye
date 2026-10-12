@@ -38,6 +38,18 @@ def panel():
     return make_panel()
 
 
+@pytest.fixture
+def synthetic_sectors(monkeypatch):
+    """Sectors for the synthetic tickers, so the "sector" graph source can run on them.
+
+    Opt-in rather than autouse: elsewhere config.SECTORS must cover exactly the real tickers.
+    """
+    from tsm import config
+
+    monkeypatch.setitem(config.SECTORS, "AAA", "Synthetic A")
+    monkeypatch.setitem(config.SECTORS, "BBB", "Synthetic B")
+
+
 def corrupt_after(panel, position, seed=99):
     """Replace every price after ``position`` with garbage. A leak-free engine cannot notice."""
     rng = np.random.default_rng(seed)

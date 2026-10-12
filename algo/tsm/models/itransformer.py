@@ -13,6 +13,19 @@ attention runs across stocks rather than across time, which is what makes it an
 *inverted* transformer. Options widen that token without ever adding tokens:
 ``features`` gives each stock 4 channels instead of 1, and ``path`` makes the
 head predict the whole 1..5 day path instead of only the 5th value.
+
+``graph`` feeds the market map (``tsm.models.graph``) in, in one of two ways,
+each behind learned gates that start at 0 so the model starts as the plain one
+and uses the map only if training finds it helps:
+
+- ``"gnn"``: after the embedding, ``h = h + g * (A @ Linear(h))``, one scalar ``g``.
+- ``"bias"``: every encoder layer adds ``lambda_h * S`` to its attention logits,
+  ``S`` the 0/1 support of ``A`` (neighbours and self-loops), one ``lambda`` per
+  head and layer.
+
+``graph_source`` picks the map: ``"corr"`` (market-adjusted correlations),
+``"sector"`` (GICS sectors) or ``"shuffled"`` (the correlation map with its
+stocks permuted, a control that keeps the statistics but links the wrong stocks).
 """
 from __future__ import annotations
 
@@ -25,6 +38,7 @@ from torch import nn
 
 from tsm.config import HORIZON_DAYS, TRADING_DAYS_PER_YEAR
 from tsm.data import Panel
+from tsm.models.graph import correlation_adjacency, correlation_adjacency_series, sector_adjacency
 from tsm.skills.base import MIN_VOL, TemporalSkill
 from tsm.target import realized_vol
 
@@ -41,6 +55,16 @@ N_FEATURES = 4
 # gradients. exp(10) = 22026 is far outside any ratio a sane forecast produces,
 # so this clamp never binds in normal training; it only stops a blow-up.
 U_CLAMP = 10.0
+
+GRAPH_MODES = ("gnn", "bias")
+GRAPH_SOURCES = ("corr", "sector", "shuffled")
+
+# The gates start at 0 and Adam moves a parameter by about lr per step, so at the
+# network's 1e-3 they could not get past ~0.3 in 300 steps. They get their own rate.
+GATE_LEARNING_RATE = 0.02
+
+# The one fixed permutation behind the "shuffled" control.
+SHUFFLE_SEED = 0
 
 
 def log_vol_series(panel: Panel) -> np.ndarray:
@@ -139,6 +163,16 @@ def training_positions(
     return candidates[window_ok & targets_ok]
 
 
+def _shuffled(matrix: np.ndarray) -> np.ndarray:
+    """The map with its stocks relabelled by one fixed permutation (rows and columns alike).
+
+    It keeps every statistic of the real map (weights, degrees, symmetry, rows
+    summing to 1) but links the wrong stocks: the control for "any graph helps".
+    """
+    order = np.random.default_rng(SHUFFLE_SEED).permutation(matrix.shape[-1])
+    return matrix[..., order, :][..., :, order]
+
+
 def loss_function(kind: str):
     """MAE or QLIKE, both on the predicted log volatility."""
     if kind not in LOSSES:
@@ -169,10 +203,14 @@ class ITransformer(nn.Module):
         dropout: float = 0.1,
         n_outputs: int = 1,
         n_channels: int = 1,
+        graph: str | None = None,
     ) -> None:
         super().__init__()
+        if graph is not None and graph not in GRAPH_MODES:
+            raise ValueError(f"graph must be one of {GRAPH_MODES} or None, got {graph!r}")
         self.n_outputs = n_outputs
         self.n_channels = n_channels
+        self.graph = graph
         # One token per stock either way: extra channels widen the token, never add tokens.
         self.embed = nn.Linear(n_channels * input_size, hidden_size)
         layer = nn.TransformerEncoderLayer(
@@ -184,9 +222,54 @@ class ITransformer(nn.Module):
         )
         self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers, enable_nested_tensor=False)
         self.head = nn.Linear(hidden_size, n_outputs)
+        if graph == "gnn":
+            # Drawn from a side stream: the weights above and the dropout noise of
+            # training then match the plain model at the same seed exactly.
+            with torch.random.fork_rng(devices=[]):
+                torch.manual_seed(torch.initial_seed() + 1)
+                self.graph_linear = nn.Linear(hidden_size, hidden_size)
+            self.gate = nn.Parameter(torch.zeros(()))
+        elif graph == "bias":
+            self.attention_bias = nn.Parameter(torch.zeros(n_layers, n_heads))
 
-    def forward(self, windows: torch.Tensor) -> torch.Tensor:
+    def gate_parameters(self) -> list[nn.Parameter]:
+        """The scalars that decide how much the map is used: ``g``, or every ``lambda``."""
+        if self.graph == "gnn":
+            return [self.gate]
+        if self.graph == "bias":
+            return [self.attention_bias]
+        return []
+
+    def gate_values(self) -> list[float]:
+        """Current gates as plain numbers; ``lambda`` in layer-major order."""
+        return [value for p in self.gate_parameters() for value in p.detach().flatten().tolist()]
+
+    def _encode(self, h: torch.Tensor, adjacency: torch.Tensor | None) -> torch.Tensor:
+        """The encoder, with the market map fed in when the model has one."""
+        if self.graph is None:
+            return self.encoder(h)
+        if adjacency is None:
+            raise ValueError("this model has a graph: pass each date's adjacency")
+        if self.graph == "gnn":
+            return self.encoder(h + self.gate * torch.bmm(adjacency, self.graph_linear(h)))
+        support = (adjacency > 0).to(h.dtype)  # neighbours and self-loops
+        # At prediction time nn.TransformerEncoderLayer switches to a fused kernel that
+        # mishandles an additive float mask (NaNs or wrong values; see
+        # tests/test_itransformer_graph.py). Turn it off here so predicting runs the same
+        # attention as training, then restore it for everything else.
+        fast_path = torch.backends.mha.get_fastpath_enabled()
+        torch.backends.mha.set_fastpath_enabled(False)
+        try:
+            for layer, bias in zip(self.encoder.layers, self.attention_bias):
+                # One additive mask per (date, head), as attention expects: (batch * heads, stocks, stocks).
+                h = layer(h, src_mask=(bias[None, :, None, None] * support[:, None]).flatten(0, 1))
+        finally:
+            torch.backends.mha.set_fastpath_enabled(fast_path)
+        return h
+
+    def forward(self, windows: torch.Tensor, adjacency: torch.Tensor | None = None) -> torch.Tensor:
         """``windows``: ``(batch, stocks, input_size)``, or ``(batch, stocks, channels, input_size)``.
+        ``adjacency``: ``(batch, stocks, stocks)``, each date's market map; only with a graph.
 
         Returns ``(batch, stocks)`` with one output, ``(batch, stocks, n_outputs)``
         with a path head.
@@ -201,7 +284,7 @@ class ITransformer(nn.Module):
         if windows.dim() == 4:
             mean = windows.mean(dim=-1, keepdim=True)
             std = windows.std(dim=-1, keepdim=True).clamp_min(1e-6)
-            tokens = self.encoder(self.embed(((windows - mean) / std).flatten(start_dim=2)))
+            tokens = self._encode(self.embed(((windows - mean) / std).flatten(start_dim=2)), adjacency)
             standardized = self.head(tokens)
             vol_mean, vol_std = mean[:, :, 0], std[:, :, 0]
             if self.n_outputs == 1:
@@ -210,7 +293,7 @@ class ITransformer(nn.Module):
 
         mean = windows.mean(dim=-1, keepdim=True)
         std = windows.std(dim=-1, keepdim=True).clamp_min(1e-6)
-        tokens = self.encoder(self.embed((windows - mean) / std))
+        tokens = self._encode(self.embed((windows - mean) / std), adjacency)
         standardized = self.head(tokens)
         if self.n_outputs == 1:
             # Kept exactly as it was, so the single-output model reproduces bit for bit.
@@ -229,6 +312,8 @@ class ITransformerSkill(TemporalSkill):
         loss: str = "mae",
         path: bool = False,
         features: bool = False,
+        graph: str | None = None,
+        graph_source: str = "corr",
         name: str | None = None,
         input_size: int = 44,
         hidden_size: int = 64,
@@ -243,13 +328,21 @@ class ITransformerSkill(TemporalSkill):
     ) -> None:
         if loss not in LOSSES:
             raise ValueError(f"loss must be one of {LOSSES}, got {loss!r}")
+        if graph is not None and graph not in GRAPH_MODES:
+            raise ValueError(f"graph must be one of {GRAPH_MODES} or None, got {graph!r}")
+        if graph_source not in GRAPH_SOURCES:
+            raise ValueError(f"graph_source must be one of {GRAPH_SOURCES}, got {graph_source!r}")
         self.loss = loss
         self.path = path
         self.features = features
+        self.graph = graph
+        self.graph_source = graph_source
         # A path head predicts the whole 5-step path; a single head only the 5th value.
         self.n_outputs = HORIZON_DAYS if path else 1
         self.n_channels = N_FEATURES if features else 1
         default = f"itransformer_{loss}" + ("_path" if path else "") + ("_feats" if features else "")
+        if graph is not None:
+            default = f"itransformer_graph_{graph}_{graph_source}"
         self.name = name if name is not None else default
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -263,6 +356,8 @@ class ITransformerSkill(TemporalSkill):
         self.seed = seed
         self.model_: ITransformer | None = None
         self.n_train_ = 0
+        # One entry per fit: the date of the panel's last row and the gates after training.
+        self.gate_history_: list[dict] = []
 
     def _build(self) -> ITransformer:
         """Seed everything, then build. Called by every fit, so refits are reproducible."""
@@ -278,6 +373,7 @@ class ITransformerSkill(TemporalSkill):
             dropout=self.dropout,
             n_outputs=self.n_outputs,
             n_channels=self.n_channels,
+            graph=self.graph,
         )
 
     def _windows(self, series: np.ndarray, positions: np.ndarray) -> np.ndarray:
@@ -292,6 +388,26 @@ class ITransformerSkill(TemporalSkill):
         steps = np.arange(1, HORIZON_DAYS + 1)
         return series[positions[:, None] + steps].transpose(0, 2, 1)
 
+    def _adjacency_series(self, panel: Panel) -> np.ndarray:
+        """``(days, stocks, stocks)`` for training: row ``t`` uses data up to day ``t`` only."""
+        if self.graph_source == "sector":
+            matrix = sector_adjacency(list(panel))
+            return np.broadcast_to(matrix, (len(next(iter(panel.values()))), *matrix.shape))
+        series = correlation_adjacency_series(panel)
+        return _shuffled(series) if self.graph_source == "shuffled" else series
+
+    def _adjacency_now(self, panel: Panel) -> np.ndarray:
+        """``(stocks, stocks)``: the map of the panel's last row, for predicting."""
+        if self.graph_source == "sector":
+            return sector_adjacency(list(panel))
+        matrix = correlation_adjacency(panel)
+        return _shuffled(matrix) if self.graph_source == "shuffled" else matrix
+
+    def _record_gates(self, panel: Panel, model: ITransformer) -> None:
+        if self.graph is not None:
+            last = next(iter(panel.values())).index[-1]
+            self.gate_history_.append({"refit_date": last, "gates": model.gate_values()})
+
     def fit(self, panel: Panel) -> None:
         model = self._build()
         if self.features:
@@ -305,22 +421,34 @@ class ITransformerSkill(TemporalSkill):
         self.n_train_ = len(positions)
         if self.n_train_ == 0:
             self.model_ = model.eval()
+            self._record_gates(panel, model)
             return
 
         x = torch.as_tensor(self._windows(inputs, positions), dtype=torch.float32)
         y = torch.as_tensor(self._targets(vol, positions), dtype=torch.float32)
+        adjacency = None
+        if self.graph is not None:
+            # Each training date with its own map, built from data up to that date.
+            adjacency = torch.as_tensor(self._adjacency_series(panel)[positions], dtype=torch.float32)
 
         criterion = loss_function(self.loss)
-        optimizer = torch.optim.Adam(model.parameters(), lr=self.learning_rate)
+        gates = model.gate_parameters()
+        gate_ids = {id(p) for p in gates}
+        groups = [{"params": [p for p in model.parameters() if id(p) not in gate_ids]}]
+        if gates:
+            groups.append({"params": gates, "lr": GATE_LEARNING_RATE})
+        optimizer = torch.optim.Adam(groups, lr=self.learning_rate)
         generator = torch.Generator().manual_seed(self.seed)
         batch = min(self.batch_dates, self.n_train_)
         model.train()
         for _ in range(self.max_steps):
             picked = torch.randint(self.n_train_, (batch,), generator=generator)
             optimizer.zero_grad()
-            criterion(model(x[picked]), y[picked]).backward()
+            predicted = model(x[picked]) if adjacency is None else model(x[picked], adjacency[picked])
+            criterion(predicted, y[picked]).backward()
             optimizer.step()
         self.model_ = model.eval()
+        self._record_gates(panel, model)
 
     def predict(self, panel: Panel) -> dict[str, float]:
         if self.model_ is None:
@@ -335,7 +463,11 @@ class ITransformerSkill(TemporalSkill):
             tail = log_vol_tail(panel, self.input_size)
             x = torch.as_tensor(tail.T[None], dtype=torch.float32)
         with torch.no_grad():
-            out = self.model_(x).squeeze(0).numpy()
+            if self.graph is None:
+                out = self.model_(x).squeeze(0).numpy()
+            else:
+                adjacency = torch.as_tensor(self._adjacency_now(panel)[None], dtype=torch.float32)
+                out = self.model_(x, adjacency).squeeze(0).numpy()
         # With a path head the forecast is the 5th step; the earlier ones only shape training.
         predicted = out[:, -1] if self.path else out
         return {ticker: max(float(np.exp(value)), MIN_VOL) for ticker, value in zip(panel, predicted)}
@@ -353,7 +485,25 @@ CANDIDATES: dict[str, dict] = {
         "features": True,
         "name": "itransformer_path_feats",
     },
+    # path_feats with the market map: itransformer_graph_{gnn,bias}_{corr,sector,shuffled}.
+    **{
+        f"itransformer_graph_{mode}_{source}": {
+            "loss": "mae",
+            "path": True,
+            "features": True,
+            "graph": mode,
+            "graph_source": source,
+            "name": f"itransformer_graph_{mode}_{source}",
+        }
+        for mode in GRAPH_MODES
+        for source in GRAPH_SOURCES
+    },
 }
+
+
+def summarize_gates(mode: str, values: list[float]) -> float:
+    """One number per refit: ``g`` itself for "gnn", the mean ``|lambda|`` for "bias"."""
+    return float(values[0]) if mode == "gnn" else float(np.mean(np.abs(values)))
 
 
 def build_candidate(name: str, seed: int = 0) -> ITransformerSkill:

@@ -19,8 +19,12 @@ TUNE_BEFORE = "2018-05-01"
 CUT = 380  # prices after this row get corrupted
 
 
+# The graph candidates' "sector" source needs a sector for the synthetic tickers.
+pytestmark = pytest.mark.usefixtures("synthetic_sectors")
+
+
 def fast_skills():
-    """The committee plus the two experiment candidates, all shrunk to run fast.
+    """The committee plus the experiment candidates, all shrunk to run fast.
 
     The candidates are not in build_skills, but the leakage rule applies to them
     just the same, so the whole-pipeline corruption test below covers them too.
@@ -39,6 +43,14 @@ def fast_skills():
             loss="mae", path=True, features=True,
             input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5,
         ),
+        *[
+            ITransformerSkill(
+                loss="mae", path=True, features=True, graph=mode, graph_source=source,
+                input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5,
+            )
+            for mode in ("gnn", "bias")
+            for source in ("corr", "sector", "shuffled")
+        ],
     ]
 
 
