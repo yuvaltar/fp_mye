@@ -2,7 +2,7 @@
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { WeightsHistoryResponse } from "@/lib/api/proposed-types";
-import { skillLabel, weightsToRows } from "@/lib/derive";
+import { skillColorIndex, skillLabel, weightsToRows } from "@/lib/derive";
 import { formatDate, formatDateShort, formatShare } from "@/lib/format";
 import { SampleDataBadge } from "./SampleDataBadge";
 import { StateMessage } from "./StateMessage";
@@ -46,9 +46,12 @@ export function WeightsChart({ data, sample }: WeightsChartProps) {
       </p>
 
       <ul className="mt-4 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted">
-        {data.skills.map((skill, index) => (
+        {data.skills.map((skill) => (
           <li key={skill.name} className="flex items-center gap-2">
-            <span aria-hidden="true" className={`size-2.5 rounded-sm ${SERIES_BG[index % SERIES_BG.length]}`} />
+            <span
+              aria-hidden="true"
+              className={`size-2.5 rounded-sm ${SERIES_BG[skillColorIndex(skill.name) % SERIES_BG.length]}`}
+            />
             {skillLabel(skill.name)}
           </li>
         ))}
@@ -65,14 +68,14 @@ export function WeightsChart({ data, sample }: WeightsChartProps) {
             <XAxis dataKey="as_of_date" tickFormatter={formatDateShort} minTickGap={24} />
             <YAxis width={44} tickFormatter={(v: number) => formatShare(v)} domain={[0, 1]} />
             <Tooltip content={<WeightsTooltip skills={data.skills.map((s) => s.name)} />} cursor={{ className: "stroke-border" }} />
-            {data.skills.map((skill, index) => (
+            {data.skills.map((skill) => (
               <Area
                 key={skill.name}
                 type="linear"
                 dataKey={skill.name}
                 stackId="weights"
-                stroke={SERIES_VAR[index % SERIES_VAR.length]}
-                fill={SERIES_VAR[index % SERIES_VAR.length]}
+                stroke={SERIES_VAR[skillColorIndex(skill.name) % SERIES_VAR.length]}
+                fill={SERIES_VAR[skillColorIndex(skill.name) % SERIES_VAR.length]}
                 fillOpacity={0.7}
                 strokeWidth={1}
                 isAnimationActive={false}
@@ -101,13 +104,16 @@ function WeightsTooltip({
     <div className="rounded-md border border-border bg-surface-raised px-3 py-2 text-xs shadow-lg">
       <div className="mb-1.5 font-medium">{formatDate(label)}</div>
       <dl className="space-y-1">
-        {skills.map((name, index) => {
+        {skills.map((name) => {
           const entry = payload.find((item) => item.dataKey === name);
           const value = typeof entry?.value === "number" ? entry.value : null;
           return (
             <div key={name} className="flex items-center justify-between gap-6">
               <dt className="flex items-center gap-2 text-muted">
-                <span aria-hidden="true" className={`size-2 rounded-sm ${SERIES_BG[index % SERIES_BG.length]}`} />
+                <span
+                  aria-hidden="true"
+                  className={`size-2 rounded-sm ${SERIES_BG[skillColorIndex(name) % SERIES_BG.length]}`}
+                />
                 {skillLabel(name)}
               </dt>
               <dd className="font-mono tabular-nums">{formatShare(value)}</dd>

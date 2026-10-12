@@ -2,6 +2,8 @@ import type { SkillPrediction } from "@/lib/api/types";
 import {
   horizonLabel,
   relativeDifference,
+  skillColorIndex,
+  skillDescription,
   skillLabel,
   skillsSentence,
   sortSkillsByWeight,
@@ -9,7 +11,7 @@ import {
 import { formatShare, formatSignedPercent, formatVol } from "@/lib/format";
 import { StateMessage } from "./StateMessage";
 
-/** Series colors by position in the original skills[] order (stable per skill). */
+/** Series colors; a skill's slot comes from its name, so it never changes between stocks. */
 const SERIES_BG = [
   "bg-series-1",
   "bg-series-2",
@@ -35,7 +37,7 @@ export function SkillsMarket({ skills, baselineVol }: SkillsMarketProps) {
   }
 
   const colorOf = (skill: SkillPrediction) =>
-    SERIES_BG[skills.indexOf(skill) % SERIES_BG.length] ?? "bg-series-1";
+    SERIES_BG[skillColorIndex(skill.name) % SERIES_BG.length] ?? "bg-series-1";
   const sentence = skillsSentence(skills, baselineVol);
   const ordered = sortSkillsByWeight(skills);
 
@@ -45,7 +47,8 @@ export function SkillsMarket({ skills, baselineVol }: SkillsMarketProps) {
         Skills market
       </h2>
       <p className="mt-1 text-sm text-muted">
-        Each skill predicts volatility on its own; the supervisor weights them by recent performance.
+        Several models each make their own guess, and the supervisor gives more weight to whoever scored
+        better lately.
       </p>
 
       <div
@@ -68,10 +71,17 @@ export function SkillsMarket({ skills, baselineVol }: SkillsMarketProps) {
           const diff = relativeDifference(skill.predicted_vol, baselineVol);
           return (
             <li key={skill.name} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5 py-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-sm ${colorOf(skill)}`} />
-                <span className="truncate font-medium">{skillLabel(skill.name)}</span>
-                <span className="hidden text-xs text-muted sm:inline">{horizonLabel(skill.horizon)}</span>
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span aria-hidden="true" className={`size-2.5 shrink-0 rounded-sm ${colorOf(skill)}`} />
+                  <span className="truncate font-medium">{skillLabel(skill.name)}</span>
+                  <span className="rounded-full border border-border px-2 py-px text-[0.7rem] text-muted">
+                    {horizonLabel(skill.horizon)}
+                  </span>
+                </div>
+                {skillDescription(skill.name) ? (
+                  <p className="mt-1 pl-5 text-xs text-muted">{skillDescription(skill.name)}</p>
+                ) : null}
               </div>
               <div className="text-right font-mono text-sm tabular-nums">
                 <span className="font-semibold">{formatVol(skill.predicted_vol)}</span>

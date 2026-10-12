@@ -8,13 +8,24 @@
  * the engine has no overview, only the first FULL_FETCH_LIMIT tickers get
  * data and the rest are listed without a prediction.
  */
-import { NotFoundError, getHistory, getOverview, getPrediction, getUniverse } from "./api/client.ts";
+import {
+  NotFoundError,
+  NotReadyError,
+  getHistory,
+  getOverview,
+  getPrediction,
+  getUniverse,
+} from "./api/client.ts";
 import type { OverviewEntry, UniverseEntry } from "./api/proposed-types.ts";
 import { getTrend, lastN, type Trend } from "./derive.ts";
 import { SPARKLINE_POINTS, type WatchlistRow } from "./watchlist-rows.ts";
 
-/** Universes up to this size are fetched ticker by ticker. */
-export const FULL_FETCH_LIMIT = 30;
+/**
+ * Universes up to this size are fetched ticker by ticker. The engine plans to
+ * serve about 50 tickers, so the limit covers that; each history response has
+ * about 2,200 points, which is why GET /overview is still proposed.
+ */
+export const FULL_FETCH_LIMIT = 60;
 
 export type WatchlistSource = "per-ticker" | "overview" | "partial";
 
@@ -52,7 +63,7 @@ async function loadOne(entry: UniverseEntry): Promise<WatchlistRow> {
     getHistory(entry.ticker),
   ]);
   if (prediction.status === "rejected") {
-    return prediction.reason instanceof NotFoundError
+    return prediction.reason instanceof NotFoundError || prediction.reason instanceof NotReadyError
       ? { ...base(entry), status: "no-prediction" }
       : { ...base(entry), status: "unavailable" };
   }

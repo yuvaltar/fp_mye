@@ -30,7 +30,7 @@ export function WatchlistSummary({ rows }: { rows: WatchlistRow[] }) {
           <span className="font-mono text-sm text-muted">{highest.ticker}</span>
         </div>
       </StatCard>
-      <StatCard label="Average confidence">
+      <StatCard label="Average recent accuracy" hint="Supervisor's score, 0–100%">
         <div className="font-mono text-2xl font-semibold tabular-nums">{formatShare(avgConfidence)}</div>
       </StatCard>
     </div>

@@ -111,19 +111,19 @@ export function samplePerformance(): PerformanceResponse {
     tickers: ["AAPL", "TEVA", "NVDA"],
     models: [
       { name: "supervisor", kind: "supervisor", rmse: 0.0412, mae: 0.0301, qlike: 0.118 },
-      { name: "short_trend", kind: "skill", rmse: 0.0455, mae: 0.0334, qlike: 0.131 },
-      { name: "medium_trend", kind: "skill", rmse: 0.0468, mae: 0.0342, qlike: 0.136 },
+      { name: "short_term", kind: "skill", rmse: 0.0455, mae: 0.0334, qlike: 0.131 },
+      { name: "regime", kind: "skill", rmse: 0.0468, mae: 0.0342, qlike: 0.136 },
       { name: "weak_signals", kind: "skill", rmse: 0.0489, mae: 0.0361, qlike: 0.142 },
-      { name: "seasonality", kind: "skill", rmse: 0.0521, mae: 0.0389, qlike: 0.151 },
+      { name: "multivariate", kind: "skill", rmse: 0.0521, mae: 0.0389, qlike: 0.151 },
       { name: "equal_weight", kind: "baseline", rmse: 0.0436, mae: 0.0319, qlike: 0.126 },
       { name: "har_rv", kind: "baseline", rmse: 0.0449, mae: 0.0328, qlike: 0.129 },
       { name: "naive", kind: "baseline", rmse: 0.0503, mae: 0.0372, qlike: 0.147 },
     ],
     skill_weights: [
-      { name: "short_trend", mean: 0.34, min: 0.12, max: 0.55 },
-      { name: "medium_trend", mean: 0.27, min: 0.08, max: 0.44 },
+      { name: "short_term", mean: 0.34, min: 0.12, max: 0.55 },
+      { name: "regime", mean: 0.27, min: 0.08, max: 0.44 },
       { name: "weak_signals", mean: 0.22, min: 0.05, max: 0.47 },
-      { name: "seasonality", mean: 0.17, min: 0.04, max: 0.31 },
+      { name: "multivariate", mean: 0.17, min: 0.04, max: 0.31 },
     ],
   };
 }

@@ -15,6 +15,26 @@ export interface PricePoint {
   close: number;
 }
 
+/**
+ * Real market snapshot, available only when the price comes from a market
+ * data source (see lib/api/market.ts). Delayed by up to about 15 minutes.
+ */
+export interface MarketQuote {
+  price: number;
+  /** ISO timestamp (UTC) of the latest price. */
+  time: string;
+  /** Close of the trading day before the latest bar; null when unknown. */
+  previous_close: number | null;
+  day_high: number | null;
+  day_low: number | null;
+  volume: number | null;
+  week52_high: number | null;
+  week52_low: number | null;
+  exchange: string | null;
+  /** Company name as reported by the source. */
+  name: string | null;
+}
+
 /** Proposed GET /prices?ticker=XXX. Points are oldest first. */
 export interface PricesResponse {
   ticker: Ticker;
@@ -22,6 +42,8 @@ export interface PricesResponse {
   last_close: number;
   last_close_date: string;
   points: PricePoint[];
+  /** Only present when the data comes from the market data source. */
+  quote?: MarketQuote;
 }
 
 /** Proposed GET /weights?ticker=XXX: one skill's weight on one date. */
@@ -94,5 +116,11 @@ export interface OverviewResponse {
  * generated example data rather than engine output.
  */
 export type Optional<T> =
-  | { state: "available"; data: T; sample: boolean }
+  | {
+      state: "available";
+      data: T;
+      sample: boolean;
+      /** Where real data came from, when it is not the engine. */
+      source?: "market";
+    }
   | { state: "unavailable" };

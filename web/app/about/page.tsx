@@ -9,16 +9,24 @@ export const metadata = {
 const STEPS = [
   {
     title: "Skills predict",
-    text: "Each skill is a small agent that looks at the price history of one stock from its own angle, for example short-term trend, medium-term trend, weak signals or seasonality, and makes its own volatility prediction.",
+    text: "Several separate models each look at the price history from their own angle and make their own guess of next week's volatility, without seeing each other's guesses.",
   },
   {
     title: "The supervisor weighs",
-    text: "A supervisor scores every skill on how well it predicted recently, on data it had not seen yet, and gives better-performing skills more weight. The weights always add up to 100%.",
+    text: "Every day, for every stock, the supervisor checks how well each model did on its last 60 predictions whose outcome is already known, and gives better scorers more weight. The weights always add up to 100%.",
   },
   {
     title: "The market decides",
     text: "The final prediction is the weighted combination of all skills. It is shown next to HAR-RV, a standard volatility model, so you can always see whether the market adds anything.",
   },
+] as const;
+
+/** The engine's current committee, in plain words. It will change; the site reads whatever it returns. */
+const COMMITTEE = [
+  { name: "HAR-RV", range: "Short", text: "A simple formula from yesterday's, this week's and this month's volatility. It is also the baseline every result has to beat." },
+  { name: "GARCH", range: "Long", text: "A classic model: a storm persists, then volatility returns to its average." },
+  { name: "Boosting", range: "Short", text: "Decision trees on trading volume, the daily price range and opening gaps." },
+  { name: "iTransformer", range: "Medium", text: "A deep network that reads all the stocks together." },
 ] as const;
 
 const GLOSSARY: { term: string; definition: ReactNode }[] = [
@@ -46,9 +54,9 @@ const GLOSSARY: { term: string; definition: ReactNode }[] = [
     definition: "The part that assigns each skill a weight from its recent performance and combines their predictions.",
   },
   {
-    term: "Supervisor confidence",
+    term: "Supervisor's recent accuracy",
     definition:
-      "A number from 0% to 100% reported by the engine for how much it trusts its own final prediction.",
+      "A number from 0% to 100% that summarizes how well the supervisor itself predicted lately. It is a score, not a probability.",
   },
   {
     term: "Volatility trend",
@@ -90,6 +98,30 @@ export default function AboutPage() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section aria-labelledby="committee-heading" className="mt-10">
+        <h2 id="committee-heading" className="text-lg font-semibold">
+          The committee today
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          These are the models the engine runs at the moment. The list will change as the engine develops (a
+          model that also reads the relationships between stocks is on its way), and the site shows whatever
+          the engine reports.
+        </p>
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+          {COMMITTEE.map((member) => (
+            <li key={member.name} className="rounded-lg border border-border bg-surface p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-semibold">{member.name}</h3>
+                <span className="rounded-full border border-border px-2 py-px text-[0.7rem] text-muted">
+                  {member.range} horizon
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{member.text}</p>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <section aria-labelledby="read-heading" className="mt-10">

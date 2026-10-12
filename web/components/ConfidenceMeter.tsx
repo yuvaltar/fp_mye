@@ -1,6 +1,10 @@
 import { formatShare } from "@/lib/format";
 
-/** Supervisor confidence (0..1) as a labelled bar. */
+/**
+ * supervisor_confidence (0..1) as a labelled bar. It summarizes how well the
+ * supervisor itself predicted lately; it is not a probability, so the page
+ * never calls it one.
+ */
 export function ConfidenceMeter({ value }: { value: number }) {
   const clamped = Math.min(1, Math.max(0, value));
   return (
@@ -10,7 +14,7 @@ export function ConfidenceMeter({ value }: { value: number }) {
       </div>
       <div
         role="meter"
-        aria-label="Supervisor confidence"
+        aria-label="Supervisor's recent accuracy"
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(clamped * 100)}

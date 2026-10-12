@@ -20,8 +20,8 @@ export function PredictionVsBaseline({ predictedVol, baselineVol }: PredictionVs
         HAR-RV is a standard volatility model; every result is compared with it.
       </p>
       <dl className="mt-4 space-y-4">
-        <Bar label="Market prediction" value={predictedVol} scale={scale} barClassName="bg-accent" />
-        <Bar label="HAR-RV baseline" value={baselineVol} scale={scale} barClassName="bg-neutral" />
+        <Bar label="Supervisor prediction" value={predictedVol} scale={scale} barClassName="bg-accent" />
+        <Bar label="Baseline model (HAR-RV)" value={baselineVol} scale={scale} barClassName="bg-neutral" />
       </dl>
       {sentence ? <p className="mt-4 text-sm">{sentence}</p> : null}
     </section>

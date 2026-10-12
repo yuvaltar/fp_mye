@@ -36,7 +36,7 @@ export function InsightsPanel({ prediction, points }: InsightsPanelProps) {
             <>
               This prediction is higher than{" "}
               <strong className="font-mono">{formatShare(percentile)}</strong> of past realized
-              volatilities in the history shown.
+              volatilities in the available history.
             </>
           )}
         </Insight>

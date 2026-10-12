@@ -84,6 +84,8 @@ The watchlist now lists the full S&P 500 (503 tickers, 11 sectors; a snapshot of
 - `latest_realized_vol` is the latest non-null `realized_vol` from that ticker's `/history` (or `null`); the trend badge compares the prediction with it.
 - Without `/overview` the site loads only the first 30 tickers individually and lists the rest without numbers.
 
+**4c. (optional) `GET /history?ticker=XXX&days=N`** to return only the last N calendar days. Each `/history` response has about 2,200 points (roughly 200 KB); the watchlist only needs the last 20 and the stock page 6 months by default. Without it the site works, just heavier.
+
 For the engine side (not a contract matter, but it affects everyone):
 
 - **Data coverage:** real predictions for 500 tickers need the loader and backtest to cover them; plan for download time and yfinance rate limits (cache locally, fetch in batches).

@@ -21,6 +21,13 @@ export default async function PerformancePage() {
         (walk-forward backtest).
       </p>
 
+      {result.state === "available" && result.sample ? (
+        <p role="note" className="mb-6 rounded-lg border border-up/40 bg-up/10 px-4 py-3 text-sm">
+          These numbers are illustrative only. They are not results of the real backtest and say nothing
+          about which model is better.
+        </p>
+      ) : null}
+
       {result.state === "available" ? (
         <>
           <dl className="mb-6 grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">

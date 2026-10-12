@@ -58,6 +58,26 @@ export function formatPrice(value: number | null | undefined, currency: string):
   return symbol ? `${symbol}${amount}` : `${amount} ${currency}`;
 }
 
+/** 33380854 -> "33.4M", 912000 -> "912K", 540 -> "540". */
+export function formatVolume(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value) || value < 0) {
+    return PLACEHOLDER;
+  }
+  if (value >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `${Math.round(value / 1e3)}K`;
+  return String(Math.round(value));
+}
+
+/** "2026-10-07T20:00:01.000Z" -> "7 Oct 2026, 20:00 UTC". */
+export function formatDateTimeUtc(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  const date = formatDate(parsed.toISOString().slice(0, 10));
+  const time = parsed.toISOString().slice(11, 16);
+  return `${date}, ${time} UTC`;
+}
+
 /** Backtest error metrics (RMSE, MAE, QLIKE) with 4 decimals. */
 export function formatMetric(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) {

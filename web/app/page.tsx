@@ -1,5 +1,6 @@
 import { WatchlistSummary } from "@/components/WatchlistSummary";
 import { WatchlistTable } from "@/components/WatchlistTable";
+import { marketDataEnabled } from "@/lib/api/market";
 import { loadWatchlist } from "@/lib/watchlist";
 
 // Data comes from the API or the mock files at request time, never at build time.
@@ -28,7 +29,7 @@ export default async function WatchlistPage() {
         </p>
       ) : null}
       <WatchlistSummary rows={rows} />
-      <WatchlistTable rows={rows} />
+      <WatchlistTable rows={rows} liveQuotes={marketDataEnabled()} />
     </main>
   );
 }

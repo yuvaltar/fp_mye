@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { QUOTE_REFRESH_SECONDS, fetchQuotes, type QuoteMap } from "@/lib/api/quotes-client";
 import {
   filterBySector,
   filterRows,
@@ -12,25 +13,35 @@ import {
   type SortKey,
   type WatchlistRow,
 } from "@/lib/watchlist-rows";
-import { formatDate, formatShare, formatVol } from "@/lib/format";
+import { formatDate, formatPrice, formatShare, formatSignedPercent, formatVol } from "@/lib/format";
 import { Sparkline } from "./Sparkline";
 import { StateMessage } from "./StateMessage";
 import { TrendBadge } from "./TrendBadge";
 
-const GRID = "md:grid-cols-[minmax(0,2fr)_6.5rem_1fr_1fr_1fr_7.5rem]";
+// Literal class strings: Tailwind only keeps classes it can read in the source.
+const GRID_WITH_PRICE = "md:grid-cols-[minmax(0,2fr)_6.5rem_1fr_1fr_1fr_7.5rem_8.5rem]";
+const GRID_NO_PRICE = "md:grid-cols-[minmax(0,2fr)_6.5rem_1fr_1fr_1fr_7.5rem]";
 
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "predicted", label: "Predicted vol" },
   { key: "baseline", label: "HAR-RV baseline" },
-  { key: "confidence", label: "Confidence" },
+  { key: "confidence", label: "Recent accuracy" },
   { key: "trend", label: "Trend" },
 ];
 
 const controlClass =
   "rounded-md border border-border bg-surface px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-export function WatchlistTable({ rows }: { rows: WatchlistRow[] }) {
+export function WatchlistTable({
+  rows,
+  liveQuotes = false,
+}: {
+  rows: WatchlistRow[];
+  /** True when real market prices are switched on (NEXT_PUBLIC_LIVE_MARKET_DATA). */
+  liveQuotes?: boolean;
+}) {
   const [query, setQuery] = useState("");
+  const [quotes, setQuotes] = useState<QuoteMap>({});
   const [sector, setSector] = useState("");
   const [onlyPredicted, setOnlyPredicted] = useState(false);
   // Rows with a prediction first; the rest follow in ticker order.
@@ -49,6 +60,31 @@ export function WatchlistTable({ rows }: { rows: WatchlistRow[] }) {
   }, [rows, query, sector, onlyPredicted, sortKey, direction]);
 
   const paged = paginate(sorted, page);
+
+  // Real prices for the rows on screen, refreshed every minute while visible.
+  const visibleKey = paged.items.map((row) => row.ticker).join(",");
+  useEffect(() => {
+    if (!liveQuotes || visibleKey === "") return;
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function load() {
+      if (document.visibilityState !== "visible") return;
+      const result = await fetchQuotes(visibleKey.split(","), controller.signal);
+      if (!cancelled && Object.keys(result.quotes).length > 0) {
+        setQuotes((current) => ({ ...current, ...result.quotes }));
+      }
+    }
+
+    void load();
+    const timer = setInterval(load, QUOTE_REFRESH_SECONDS * 1000);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [liveQuotes, visibleKey]);
+  const grid = liveQuotes ? GRID_WITH_PRICE : GRID_NO_PRICE;
 
   if (rows.length === 0) {
     return (
@@ -153,26 +189,28 @@ export function WatchlistTable({ rows }: { rows: WatchlistRow[] }) {
       ) : (
         <div className="overflow-hidden rounded-lg border border-border bg-surface">
           <div
-            className={`hidden gap-4 border-b border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted md:grid ${GRID}`}
+            className={`hidden gap-4 border-b border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted md:grid ${grid}`}
           >
             <SortHeader label="Ticker" sortKey="ticker" ariaSort={ariaSort("ticker")} onSort={toggleSort} align="left" />
             <span className="text-right">Last 20</span>
             {COLUMNS.map((c) => (
               <SortHeader key={c.key} label={c.label} sortKey={c.key} ariaSort={ariaSort(c.key)} onSort={toggleSort} align="right" />
             ))}
+            {liveQuotes ? <span className="text-right">Price</span> : null}
           </div>
           <ul className="divide-y divide-border">
             {paged.items.map((row) => (
               <li key={row.ticker}>
                 <Link
                   href={`/stock/${encodeURIComponent(row.ticker)}`}
-                  className={`grid grid-cols-2 items-center gap-x-4 gap-y-3 px-4 py-3 transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${GRID}`}
+                  className={`grid grid-cols-2 items-center gap-x-4 gap-y-3 px-4 py-3 transition-colors hover:bg-surface-raised focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent ${grid}`}
                 >
                   <span className="col-span-2 flex min-w-0 items-baseline gap-3 md:col-span-1">
                     <span className="font-mono font-semibold">{row.ticker}</span>
                     <span className="truncate text-sm text-muted">{row.name}</span>
                   </span>
                   <RowBody row={row} />
+                  {liveQuotes ? <PriceCell quote={quotes[row.ticker]} /> : null}
                 </Link>
               </li>
             ))}
@@ -195,7 +233,7 @@ function RowBody({ row }: { row: WatchlistRow }) {
         </span>
         <Metric label="Predicted vol" value={formatVol(row.predictedVol)} strong />
         <Metric label="HAR-RV baseline" value={formatVol(row.baselineVol)} />
-        <Metric label="Confidence" value={formatShare(row.confidence)} />
+        <Metric label="Recent accuracy" value={formatShare(row.confidence)} />
         <span className="flex flex-col items-start gap-0.5 md:items-end">
           <span className="text-xs text-muted md:hidden">Trend</span>
           <TrendBadge trend={row.trend} />
@@ -206,6 +244,21 @@ function RowBody({ row }: { row: WatchlistRow }) {
   return (
     <span className="col-span-2 text-sm text-muted md:col-span-5 md:text-right">
       {row.status === "no-prediction" ? "No prediction yet" : "Prediction unavailable right now"}
+    </span>
+  );
+}
+
+/** Latest price with the day change; a dash until the first quote arrives. */
+function PriceCell({ quote }: { quote: QuoteMap[string] | undefined }) {
+  return (
+    <span className="col-span-2 flex items-baseline justify-between gap-3 md:col-span-1 md:flex-col md:items-end md:gap-0.5">
+      <span className="text-xs text-muted md:hidden">Price</span>
+      <span className="font-mono text-sm tabular-nums">{quote ? formatPrice(quote.price, quote.currency) : "—"}</span>
+      <span className="font-mono text-xs tabular-nums text-muted">
+        {quote && quote.change !== null
+          ? `${quote.change >= 0 ? "▲" : "▼"} ${formatSignedPercent(quote.change)}`
+          : ""}
+      </span>
     </span>
   );
 }

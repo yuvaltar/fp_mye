@@ -6,6 +6,12 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { sampleWeightsHistory, samplePerformance, samplePrices } from "./fixtures.ts";
+import {
+  fetchMarketPrices,
+  fetchMarketQuotes,
+  marketDataEnabled,
+  type QuoteSummary,
+} from "./market.ts";
 import type {
   OverviewEntry,
   OverviewResponse,
@@ -27,6 +33,14 @@ export class NotFoundError extends Error {
     super(`Unknown ticker: ${ticker}`);
     this.name = "NotFoundError";
     this.ticker = ticker;
+  }
+}
+
+/** HTTP 503: the engine has no predictions yet (its results file is missing). */
+export class NotReadyError extends Error {
+  constructor() {
+    super("The predictions are not ready yet");
+    this.name = "NotReadyError";
   }
 }
 
@@ -94,6 +108,7 @@ async function fetchJson<T>(pathAndQuery: string, ticker?: string): Promise<T> {
   if (response.status === 404 && ticker !== undefined) {
     throw new NotFoundError(ticker);
   }
+  if (response.status === 503) throw new NotReadyError();
   if (!response.ok) {
     throw new ApiError(`The API answered with status ${response.status}`, response.status);
   }
@@ -126,10 +141,28 @@ async function fetchOptional<T>(pathAndQuery: string): Promise<Optional<T>> {
 export async function getPrices(ticker: string): Promise<Optional<PricesResponse>> {
   const symbol = normalizeTicker(ticker);
   if (useMocks()) {
+    // Mock mode still needs a known ticker; with live market data on, real
+    // prices replace the generated sample for any listed company.
+    if (marketDataEnabled()) {
+      const real = await fetchMarketPrices(symbol);
+      if (real) return { state: "available", data: real, sample: false, source: "market" };
+    }
     const prediction = await readMockForTicker<Prediction>("mock_prediction.json", symbol);
     return { state: "available", data: samplePrices(prediction), sample: true };
   }
-  return fetchOptional<PricesResponse>(`/prices?ticker=${encodeURIComponent(symbol)}`);
+  // Live mode: the engine's own /prices wins; otherwise real market data.
+  const fromEngine = await fetchOptional<PricesResponse>(`/prices?ticker=${encodeURIComponent(symbol)}`);
+  if (fromEngine.state === "available" || !marketDataEnabled()) return fromEngine;
+  const real = await fetchMarketPrices(symbol);
+  return real
+    ? { state: "available", data: real, sample: false, source: "market" }
+    : { state: "unavailable" };
+}
+
+/** Latest price and day change for many tickers from the market data source. */
+export async function getQuotes(tickers: readonly string[]): Promise<Map<string, QuoteSummary>> {
+  if (!marketDataEnabled()) return new Map();
+  return fetchMarketQuotes(tickers);
 }
 
 /** PROPOSED GET /weights?ticker=XXX: skill weights over time. */

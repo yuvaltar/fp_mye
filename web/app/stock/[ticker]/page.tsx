@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ConfidenceMeter } from "@/components/ConfidenceMeter";
 import { HistoryChart } from "@/components/HistoryChart";
 import { InsightsPanel } from "@/components/InsightsPanel";
+import { MarketSnapshot } from "@/components/MarketSnapshot";
 import { PredictionVsBaseline } from "@/components/PredictionVsBaseline";
 import { PriceChart } from "@/components/PriceChart";
 import { SkillsMarket } from "@/components/SkillsMarket";
@@ -11,8 +12,10 @@ import { StateMessage } from "@/components/StateMessage";
 import { TrendBadge } from "@/components/TrendBadge";
 import { UnavailableNote } from "@/components/UnavailableNote";
 import { WeightsChart } from "@/components/WeightsChart";
+import { VolatilityGuide } from "@/components/VolatilityGuide";
 import {
   NotFoundError,
+  NotReadyError,
   getHistory,
   getPrediction,
   getPrices,
@@ -42,28 +45,42 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
     universe.status === "fulfilled" ? universe.value.find((t) => t.ticker === symbol) : undefined;
 
   if (prediction.status === "rejected") {
-    if (!(prediction.reason instanceof NotFoundError)) throw prediction.reason;
-    // Listed but not covered by the engine yet: say so instead of a 404.
-    if (!listed) notFound();
+    const notReady = prediction.reason instanceof NotReadyError;
+    if (!notReady && !(prediction.reason instanceof NotFoundError)) throw prediction.reason;
+    // Listed but not covered by the engine yet (404), or the engine has no
+    // results at all yet (503): say so instead of showing an error.
+    if (!notReady && !listed) notFound();
+    // Real market data does not depend on the engine, so show it meanwhile.
+    const market = prices.status === "fulfilled" ? prices.value : null;
     return (
       <main className="space-y-6">
         <Link href="/" className="text-sm text-muted transition-colors hover:text-text">
           ← Watchlist
         </Link>
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h1 className="font-mono text-3xl font-semibold tracking-tight">{listed.ticker}</h1>
-          <span className="text-lg text-muted">{listed.name}</span>
-          {listed.sector ? <span className="text-sm text-muted">· {listed.sector}</span> : null}
+          <h1 className="font-mono text-3xl font-semibold tracking-tight">{listed?.ticker ?? symbol}</h1>
+          {listed ? <span className="text-lg text-muted">{listed.name}</span> : null}
+          {listed?.sector ? <span className="text-sm text-muted">· {listed.sector}</span> : null}
         </div>
         <StateMessage
-          title="No prediction yet"
-          description={`The prediction engine does not cover ${listed.ticker} yet. It will appear here as soon as it does.`}
+          title={notReady ? "The predictions are not ready yet" : "No prediction yet"}
+          description={
+            notReady
+              ? "The prediction engine has not produced its results yet. Try again in a little while."
+              : `The prediction engine does not cover ${listed?.ticker ?? symbol} yet. It will appear here as soon as it does.`
+          }
           action={
             <Link href="/" className={actionClassName}>
               Back to the watchlist
             </Link>
           }
         />
+        {market?.state === "available" && market.source === "market" ? (
+          <>
+            <MarketSnapshot data={market.data} />
+            <PriceChart data={market.data} sample={false} live />
+          </>
+        ) : null}
       </main>
     );
   }
@@ -91,19 +108,24 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
           {listed?.sector ? <span className="text-sm text-muted">· {listed.sector}</span> : null}
         </div>
         <p className="mt-1 text-xs text-muted">
-          As of {formatDate(p.as_of_date)} close · covers the next {p.horizon_days} trading days · model{" "}
-          <span className="font-mono">{p.model_version}</span>
+          From the engine&apos;s latest run, with prices up to the {formatDate(p.as_of_date)} close.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Predicted volatility" hint="Annualized, next 5 trading days">
+        <StatCard
+          label="Expected volatility"
+          hint={`For the ${p.horizon_days} trading days after ${formatDate(p.as_of_date)}`}
+        >
           <div className="font-mono text-3xl font-semibold tabular-nums">{formatVol(p.predicted_vol)}</div>
         </StatCard>
-        <StatCard label="HAR-RV baseline" hint={diff === null ? undefined : `Prediction is ${formatSignedPercent(diff)} vs baseline`}>
+        <StatCard
+          label="Baseline model"
+          hint={diff === null ? "HAR-RV" : `HAR-RV · prediction is ${formatSignedPercent(diff)} vs baseline`}
+        >
           <div className="font-mono text-3xl font-semibold tabular-nums text-muted">{formatVol(p.baseline_vol)}</div>
         </StatCard>
-        <StatCard label="Supervisor confidence">
+        <StatCard label="Supervisor's recent accuracy" hint="A score from 0 to 100%, not a probability">
           <ConfidenceMeter value={p.supervisor_confidence} />
         </StatCard>
         <StatCard label="Volatility trend" hint="Prediction vs latest realized volatility">
@@ -113,8 +135,12 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
         </StatCard>
       </div>
 
+      {priceData?.state === "available" && priceData.source === "market" ? (
+        <MarketSnapshot data={priceData.data} />
+      ) : null}
+
       {priceData?.state === "available" ? (
-        <PriceChart data={priceData.data} sample={priceData.sample} />
+        <PriceChart data={priceData.data} sample={priceData.sample} live={priceData.source === "market"} />
       ) : (
         <UnavailableNote
           title="Price chart"
@@ -148,6 +174,15 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
           description="The prediction engine does not provide weight history yet. How the supervisor shifts trust between skills will appear here once it does."
         />
       )}
+
+      <VolatilityGuide predictedVol={p.predicted_vol} />
+
+      <footer className="border-t border-border pt-4 text-xs text-muted">
+        <p>For learning purposes only, not investment advice.</p>
+        <p className="mt-1">
+          Engine version <span className="font-mono">{p.model_version}</span>
+        </p>
+      </footer>
     </main>
   );
 }

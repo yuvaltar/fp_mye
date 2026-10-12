@@ -3,26 +3,28 @@
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { PricesResponse } from "@/lib/api/proposed-types";
-import { lastN, priceChange } from "@/lib/derive";
+import { priceChange, sliceByDays } from "@/lib/derive";
 import { formatDate, formatDateShort, formatPrice, formatSignedPercent } from "@/lib/format";
 import { RangeSelector, type RangeOption } from "./RangeSelector";
 import { SampleDataBadge } from "./SampleDataBadge";
 import { StateMessage } from "./StateMessage";
 
 const RANGES: readonly RangeOption[] = [
-  { label: "1M", count: 21 },
-  { label: "3M", count: 63 },
-  { label: "All", count: null },
+  { label: "1M", days: 31 },
+  { label: "3M", days: 92 },
+  { label: "All", days: null },
 ];
 
 interface PriceChartProps {
   data: PricesResponse;
   sample: boolean;
+  /** True when the prices are real market data. */
+  live?: boolean;
 }
 
 /** Closing price with the last close, the change over the chosen range and a range selector. */
-export function PriceChart({ data, sample }: PriceChartProps) {
-  const [count, setCount] = useState<number | null>(63);
+export function PriceChart({ data, sample, live = false }: PriceChartProps) {
+  const [days, setDays] = useState<number | null>(92);
 
   if (data.points.length === 0) {
     return (
@@ -30,7 +32,7 @@ export function PriceChart({ data, sample }: PriceChartProps) {
     );
   }
 
-  const points = lastN(data.points, count);
+  const points = sliceByDays(data.points, days, (p) => p.date);
   const change = priceChange(points);
 
   return (
@@ -42,6 +44,7 @@ export function PriceChart({ data, sample }: PriceChartProps) {
               Price
             </h2>
             {sample ? <SampleDataBadge /> : null}
+            {live ? <span className="text-xs text-muted">Daily closes · Yahoo Finance</span> : null}
           </div>
           <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-mono text-3xl font-semibold tabular-nums">
@@ -55,7 +58,7 @@ export function PriceChart({ data, sample }: PriceChartProps) {
           </div>
           <p className="mt-1 text-xs text-muted">Close on {formatDate(data.last_close_date)}</p>
         </div>
-        <RangeSelector label="Price range" options={RANGES} value={count} onChange={setCount} />
+        <RangeSelector label="Price range" options={RANGES} value={days} onChange={setDays} />
       </div>
 
       <div

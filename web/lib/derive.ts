@@ -57,12 +57,57 @@ export function relativeDifference(value: number, reference: number): number | n
   return value / reference - 1;
 }
 
+/**
+ * Display names for skills. The engine's real members are short_term (HAR-RV),
+ * regime (GARCH), weak_signals (Boosting) and multivariate (iTransformer); the
+ * trend/seasonality names come from the contract mocks. Unknown names (for
+ * example the coming iTransformer with a relationship map) fall back to
+ * auto-formatting, so nothing here is a fixed list.
+ */
 const KNOWN_SKILL_LABELS: Record<string, string> = {
+  short_term: "HAR-RV",
+  regime: "GARCH",
+  weak_signals: "Boosting",
+  multivariate: "iTransformer",
   short_trend: "Short trend",
   medium_trend: "Medium trend",
-  weak_signals: "Weak signals",
   seasonality: "Seasonality",
 };
+
+/** One-line plain-language description of a known skill; null for unknown ones. */
+const KNOWN_SKILL_INFO: Record<string, string> = {
+  short_term: "A simple formula from yesterday's, this week's and this month's volatility.",
+  regime: "A classic model: storms persist, then volatility drifts back to its average.",
+  weak_signals: "Decision trees on trading volume, daily range and opening gaps.",
+  multivariate: "A deep network that reads all the stocks together.",
+};
+
+export function skillDescription(name: string): string | null {
+  return KNOWN_SKILL_INFO[name] ?? null;
+}
+
+/**
+ * Stable color slot (0-5) per skill so a model keeps its color on every stock
+ * and in every chart. Known skills have fixed slots; an unknown name gets one
+ * of the two spare slots, deterministically from its name.
+ */
+const KNOWN_SKILL_COLOR: Record<string, number> = {
+  short_term: 0,
+  weak_signals: 1,
+  regime: 2,
+  multivariate: 3,
+  short_trend: 0,
+  medium_trend: 2,
+  seasonality: 3,
+};
+
+export function skillColorIndex(name: string): number {
+  const known = KNOWN_SKILL_COLOR[name];
+  if (known !== undefined) return known;
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return 4 + (hash % 2);
+}
 
 /** Friendly label for a skill; unknown snake_case names are auto-formatted. */
 export function skillLabel(name: string): string {
@@ -227,6 +272,65 @@ export function skillSpread(skills: readonly SkillPrediction[]): SkillSpread | n
   return { minSkill: min, maxSkill: max, range: max.predicted_vol - min.predicted_vol };
 }
 
+/**
+ * Volatility levels from the project's own data (10 large stocks since 2018):
+ * a typical week is about 24%, a calm week is under 11%, a stormy week is over
+ * 52% and crises exceed 100%. Decimals, like every volatility in the contract.
+ */
+export const VOL_CALM_BELOW = 0.11;
+export const VOL_TYPICAL = 0.24;
+export const VOL_STORMY_ABOVE = 0.52;
+export const VOL_CRISIS_ABOVE = 1.0;
+
+export type VolLevel = "calm" | "typical" | "stormy" | "crisis";
+
+/** Where a prediction sits on that scale. */
+export function volLevel(value: number): VolLevel {
+  if (value < VOL_CALM_BELOW) return "calm";
+  if (value > VOL_CRISIS_ABOVE) return "crisis";
+  if (value > VOL_STORMY_ABOVE) return "stormy";
+  return "typical";
+}
+
+const DAY_MS = 86_400_000;
+
+function isoToDay(iso: string): number {
+  return Math.floor(Date.parse(`${iso}T00:00:00Z`) / DAY_MS);
+}
+
+/**
+ * Items from the last `days` calendar days before the latest item (inclusive),
+ * judged by the date on each item; all of them when days is null. The range is
+ * by date, not by number of points, so it stays right as the history grows.
+ */
+export function sliceByDays<T>(
+  items: readonly T[],
+  days: number | null,
+  dateOf: (item: T) => string,
+): T[] {
+  const last = items[items.length - 1];
+  if (days === null || last === undefined) return [...items];
+  const cutoff = isoToDay(dateOf(last)) - days;
+  return items.filter((item) => isoToDay(dateOf(item)) >= cutoff);
+}
+
+/**
+ * One item per ISO week (the last of each week), so a multi-year history stays
+ * light on the chart. Order is kept; the very last item is always included.
+ */
+export function downsampleWeekly<T>(items: readonly T[], dateOf: (item: T) => string): T[] {
+  const result: T[] = [];
+  let lastWeek = Number.NaN;
+  for (const item of items) {
+    // Weeks counted from a Monday (1970-01-05).
+    const week = Math.floor((isoToDay(dateOf(item)) - 4) / 7);
+    if (week === lastWeek) result[result.length - 1] = item;
+    else result.push(item);
+    lastWeek = week;
+  }
+  return result;
+}
+
 /** Last `count` items; the whole list when count is null or too large. */
 export function lastN<T>(items: readonly T[], count: number | null): T[] {
   if (count === null || count >= items.length) return [...items];
@@ -249,6 +353,28 @@ export function priceChange(points: readonly PricePoint[]): PriceChange | null {
   const last = points[points.length - 1];
   if (!first || !last || points.length < 2 || first.close <= 0) return null;
   return { absolute: last.close - first.close, relative: last.close / first.close - 1 };
+}
+
+/**
+ * Annualized realized volatility over the last `windowReturns` daily returns,
+ * from closing prices (oldest first). Same definition as the contract:
+ * sqrt(252 / n * sum of squared daily log returns), as a decimal. null when
+ * there are not enough valid prices.
+ */
+export function realizedVolFromCloses(
+  closes: readonly number[],
+  windowReturns: number,
+): number | null {
+  if (windowReturns < 1 || closes.length < windowReturns + 1) return null;
+  const recent = closes.slice(closes.length - windowReturns - 1);
+  let sumSquares = 0;
+  for (let i = 1; i < recent.length; i++) {
+    const previous = recent[i - 1] as number;
+    const current = recent[i] as number;
+    if (!(previous > 0) || !(current > 0)) return null;
+    sumSquares += Math.log(current / previous) ** 2;
+  }
+  return Math.sqrt((252 / windowReturns) * sumSquares);
 }
 
 // ---------------------------------------------------------------------------

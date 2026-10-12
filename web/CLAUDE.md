@@ -28,6 +28,24 @@ web/
 - Pages are Server Components that fetch (in parallel with `Promise.all` where the calls are independent). Recharts charts are Client Components (`"use client"`) that receive data as props and never fetch.
 - The history chart gets `realized_vol: null` as a gap in the line (no `connectNulls`), never as 0.
 
+### What the real engine returns (from the algo team's summary, 2026-10-08)
+
+- Real skill names: `short_term` (HAR-RV, short), `regime` (GARCH, long), `weak_signals` (Boosting, short), `multivariate` (iTransformer, medium). The contract mocks use other names (`short_trend`, ...), and a graph-aware iTransformer with an unknown name is coming. Labels, descriptions and colors are looked up by name in `lib/derive.ts` with a fallback, never assumed.
+- A skill keeps one color on every stock and chart (`skillColorIndex`).
+- `/history` has about 2,200 daily points per ticker (since 2018). Charts slice by calendar days (`sliceByDays`), "All" shows one point per week (`downsampleWeekly`), and the CSV has every day. Ranges are by date, never by number of points.
+- `supervisor_confidence` is the supervisor's recent accuracy (a 0..1 score), not a probability: the UI says "recent accuracy" and never "chance" or "probability".
+- HTTP 503 from `/predict` or `/history` means the engine has no results yet: `NotReadyError`, shown as "The predictions are not ready yet", never as a generic error.
+- Predictions come from the engine's last run, so `as_of_date` is the date of that run, not necessarily today.
+- Volatility reference levels (calm under 11%, typical about 24%, stormy over 52%, crises over 100%) live in `lib/derive.ts` and come from the engine team's data. Do not copy backtest numbers from `docs/backtest.md` anywhere in the UI; every result number comes from the API.
+
+### Real market data (optional, `NEXT_PUBLIC_LIVE_MARKET_DATA=true`)
+
+- `lib/api/market.ts` reads Yahoo Finance's public chart and spark endpoints (no key, unofficial, delayed up to about 15 minutes). It is server-side only and every failure means "no data", never an error page. Tests never touch the network: they mock `fetch`.
+- Order of preference for prices: the engine's own `/prices`, then market data, then (mock mode only) labelled sample data. A price from the market source is shown with a "Live data" label and its source and time; it is never presented as an engine result.
+- `app/api/quotes/route.ts` serves fresh quotes to the browser; `lib/api/quotes-client.ts` is the only browser-side fetch and talks to that route, never to Yahoo. Do not call the market source from any component.
+- Yahoo's `chartPreviousClose` is the close before the whole range, not yesterday's: the previous close comes from the series. Contract tickers use dots (`BRK.B`), Yahoo uses dashes (`BRK-B`): map with `yahooSymbol`.
+- "Realized volatility" shown from real prices is computed by the site (`realizedVolFromCloses`, same definition as the contract) and labelled as such, never as an engine result. Listed companies without an engine prediction still show their real market data.
+
 ### Proposed endpoints (not in the contract yet)
 
 `/prices`, `/weights` and `/performance` are proposals documented in `docs/proposed-contract-additions.md`; their types live in `lib/api/proposed-types.ts`, separate from the contract mirror in `types.ts`.

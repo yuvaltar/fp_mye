@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import type { HistoryPoint } from "@/lib/api/types";
-import { lastN } from "@/lib/derive";
+import { downsampleWeekly, sliceByDays } from "@/lib/derive";
 import { formatDate, formatDateShort, formatVol, historyToCsv } from "@/lib/format";
 import { RangeSelector, type RangeOption } from "./RangeSelector";
 import { StateMessage } from "./StateMessage";
@@ -21,26 +21,34 @@ interface HistoryChartProps {
   points: HistoryPoint[];
 }
 
+/** Realized is what actually happened, so it is the boldest line. */
 const SERIES = [
-  { key: "predicted_vol", label: "Market prediction", line: "var(--color-accent)", swatch: "bg-accent", dash: undefined },
-  { key: "baseline_vol", label: "HAR-RV baseline", line: "var(--color-neutral)", swatch: "bg-neutral", dash: "5 4" },
-  { key: "realized_vol", label: "Realized", line: "var(--color-up)", swatch: "bg-up", dash: undefined },
+  { key: "predicted_vol", label: "Supervisor prediction", line: "var(--color-accent)", swatch: "bg-accent", dash: undefined, width: 2 },
+  { key: "baseline_vol", label: "Baseline model (HAR-RV)", line: "var(--color-neutral)", swatch: "bg-neutral", dash: "5 4", width: 1.5 },
+  { key: "realized_vol", label: "What actually happened", line: "var(--color-up)", swatch: "bg-up", dash: undefined, width: 3 },
 ] as const;
 
 type SeriesKey = (typeof SERIES)[number]["key"];
 
+/** By calendar days, so the ranges stay right as the history grows. */
 const RANGES: readonly RangeOption[] = [
-  { label: "7D", count: 7 },
-  { label: "14D", count: 14 },
-  { label: "All", count: null },
+  { label: "3M", days: 92 },
+  { label: "6M", days: 183 },
+  { label: "1Y", days: 366 },
+  { label: "All", days: null },
 ];
+const DEFAULT_RANGE_DAYS = 183;
 
 /** Predicted vs baseline vs realized volatility. Realized is a gap while null. */
 export function HistoryChart({ ticker, points }: HistoryChartProps) {
-  const [count, setCount] = useState<number | null>(null);
+  const [days, setDays] = useState<number | null>(DEFAULT_RANGE_DAYS);
   const [hidden, setHidden] = useState<ReadonlySet<SeriesKey>>(new Set());
 
-  const shown = useMemo(() => lastN(points, count), [points, count]);
+  // "All" can be thousands of daily points: draw one per week to keep it light.
+  const shown = useMemo(() => {
+    const inRange = sliceByDays(points, days, (p) => p.as_of_date);
+    return days === null ? downsampleWeekly(inRange, (p) => p.as_of_date) : inRange;
+  }, [points, days]);
   const csvHref = useMemo(
     () => `data:text/csv;charset=utf-8,${encodeURIComponent(historyToCsv(ticker, points))}`,
     [ticker, points],
@@ -55,7 +63,7 @@ export function HistoryChart({ ticker, points }: HistoryChartProps) {
     );
   }
 
-  const pending = shown.filter((p) => p.realized_vol === null).length;
+  const pending = points.filter((p) => p.realized_vol === null).length;
 
   function toggle(key: SeriesKey) {
     const next = new Set(hidden);
@@ -74,12 +82,13 @@ export function HistoryChart({ ticker, points }: HistoryChartProps) {
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Each point is a prediction made on that date for the following 5 trading days.
             {pending > 0
-              ? ` Realized volatility is missing for the latest ${pending} ${pending === 1 ? "date" : "dates"}: those 5 days have not all passed yet.`
+              ? ` The "what actually happened" line stops where the 5 days have not all passed yet (${pending} ${pending === 1 ? "date" : "dates"}): not known yet.`
               : ""}
+            {days === null ? " Showing one point per week; the CSV has every day." : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <RangeSelector label="History range" options={RANGES} value={count} onChange={setCount} />
+          <RangeSelector label="History range" options={RANGES} value={days} onChange={setDays} />
           <a
             href={csvHref}
             download={`${ticker}-history.csv`}
@@ -132,7 +141,7 @@ export function HistoryChart({ ticker, points }: HistoryChartProps) {
                 type="linear"
                 dataKey={series.key}
                 stroke={series.line}
-                strokeWidth={2}
+                strokeWidth={series.width}
                 strokeDasharray={series.dash}
                 dot={false}
                 activeDot={{ r: 3 }}
@@ -181,7 +190,7 @@ function ChartTooltip({
                 {series.label}
               </dt>
               <dd className="font-mono tabular-nums">
-                {value === null && series.key === "realized_vol" ? "pending" : formatVol(value)}
+                {value === null && series.key === "realized_vol" ? "not known yet" : formatVol(value)}
               </dd>
             </div>
           );
