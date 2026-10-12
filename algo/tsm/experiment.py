@@ -18,11 +18,13 @@ Prices are frozen: it reads the ``algo/data/`` cache as it is and never
 downloads, because the committee it is compared with was built from those
 prices. A fresh download adds days and shifts adjusted closes, which would make
 a candidate's numbers incomparable with the saved ones. A missing cache file
-stops the run.
+stops the run, and so does a cache whose last date is not the artifacts'
+``last_date``.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from datetime import date
 from pathlib import Path
@@ -30,14 +32,16 @@ from pathlib import Path
 import pandas as pd
 
 from tsm.backtest import BACKTEST_START, BASELINE_SKILL, TEST_START, calibrate, run_skills
-from tsm.config import ARTIFACTS_DIR, DOCS_DIR
-from tsm.data import Panel, load_panel
+from tsm.config import ARTIFACTS_DIR, DOCS_DIR, TICKERS
+from tsm.data import Panel, align_panel, load_prices
 from tsm.models.itransformer import CANDIDATES, build_candidate
 from tsm.report import scored_rows
 from tsm.skills.base import TemporalSkill
 from tsm.supervisor import qlike
 
 EXPERIMENTS_FILE = DOCS_DIR / "experiments.md"
+# Written by the backtest with the committee; its last_date is the last price day the artifacts saw.
+META_FILE = ARTIFACTS_DIR / "meta.json"
 # Per-candidate predictions, kept out of git: they are reproducible from a seed.
 EXPERIMENTS_DIR = Path(__file__).resolve().parents[1] / "experiments"
 
@@ -90,6 +94,36 @@ def check_descriptions(names: list[str]) -> None:
             f"no DESCRIPTIONS entry for {', '.join(sorted(set(missing)))}; "
             f"add one in {__name__} before running, so the table says what was run"
         )
+
+
+def load_frozen_panel() -> Panel:
+    """The prices the committed artifacts were built from: the cache, checked, never a download.
+
+    Every ticker's cache file must end on ``last_date`` in ``artifacts/meta.json``.
+    ``python -m tsm.data``, or a backtest on a later day, rewrites the cache with
+    more days and re-adjusted closes; candidates walked on that cache would be
+    compared with a committee built from other prices, and nothing would fail.
+    Each ticker is checked before alignment, because aligning would hide a single
+    ticker that was downloaded again.
+    """
+    last_date = pd.Timestamp(json.loads(META_FILE.read_text())["last_date"])
+    frames = {ticker: load_prices(ticker, cache_only=True) for ticker in TICKERS}
+    mismatched: dict[str, list[str]] = {}
+    for ticker, frame in frames.items():
+        if frame.index[-1] != last_date:
+            mismatched.setdefault(frame.index[-1].date().isoformat(), []).append(ticker)
+    if mismatched:
+        found = "; ".join(
+            f"it ends on {day} for {len(names)} ticker(s) ({', '.join(names[:5])}{', ...' if len(names) > 5 else ''})"
+            for day, names in sorted(mismatched.items())
+        )
+        raise ValueError(
+            f"the price cache does not match the committed artifacts: {META_FILE.name} has last_date "
+            f"{last_date.date()}, but {found}. Experiments must see the prices the artifacts were "
+            "built from: restore that cache, or re-run python -m tsm.backtest to rebuild the "
+            "artifacts from the current one."
+        )
+    return align_panel(frames)
 
 
 def load_committee(artifacts_dir=ARTIFACTS_DIR) -> tuple[pd.DataFrame, list[str]]:
@@ -243,12 +277,12 @@ def main(argv: list[str] | None = None) -> None:
             skills.append(skill)
 
     started = time.time()
+    # The prices the saved committee was built from, checked before anything slow.
+    panel = load_frozen_panel()
     committee, committee_names = load_committee()
     print(f"Read {len(committee)} saved committee predictions for {committee_names}", flush=True)
     print(f"Running {len(skills)} run(s): {', '.join(label for label, _, _ in runs)}", flush=True)
 
-    # The prices the saved committee was built from: the cache, never a download.
-    panel = load_panel(cache_only=True)
     candidate_frame, runtimes = run_candidates(panel, skills)
 
     merged = committee.merge(candidate_frame, on=["date", "ticker"], how="inner", validate="one_to_one")

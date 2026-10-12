@@ -72,6 +72,23 @@ TICKERS: dict[str, str] = {
     "SPY": "SPDR S&P 500 ETF Trust",
 }
 
+# GICS sector of every ticker above, for the sector adjacency of the market map
+# (and, later, the API's /tickers). TEVA is Health Care; SPY is the market, its own group.
+MARKET_SECTOR = "Market"
+SECTORS: dict[str, str] = {
+    **dict.fromkeys(["AAPL", "MSFT", "NVDA", "AVGO", "ORCL"], "Information Technology"),
+    **dict.fromkeys(["GOOGL", "META", "NFLX", "DIS", "TMUS"], "Communication Services"),
+    **dict.fromkeys(["AMZN", "TSLA", "HD", "MCD", "LOW"], "Consumer Discretionary"),
+    **dict.fromkeys(["WMT", "COST", "PG", "KO", "PEP"], "Consumer Staples"),
+    **dict.fromkeys(["LLY", "JNJ", "UNH", "ABBV", "MRK", "TEVA"], "Health Care"),
+    **dict.fromkeys(["JPM", "BRK-B", "V", "MA", "BAC"], "Financials"),
+    **dict.fromkeys(["XOM", "CVX", "COP", "EOG", "SLB"], "Energy"),
+    **dict.fromkeys(["CAT", "UNP", "DE", "LMT", "ETN"], "Industrials"),
+    **dict.fromkeys(["SHW", "APD", "ECL", "NEM", "FCX"], "Materials"),
+    **dict.fromkeys(["NEE", "SO", "DUK", "AEP", "SRE"], "Utilities"),
+    "SPY": MARKET_SECTOR,
+}
+
 # The market index, also used as a feature by the weak_signals skill.
 MARKET_TICKER = "SPY"
 

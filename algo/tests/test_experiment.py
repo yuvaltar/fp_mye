@@ -3,6 +3,7 @@
 A walk-forward costs minutes, so anything that can be checked before it starts
 has to be checked before it starts. These tests never run a model.
 """
+import json
 import os
 
 import numpy as np
@@ -40,7 +41,7 @@ def test_main_refuses_before_touching_the_panel(monkeypatch):
     def fail(*args, **kwargs):
         raise AssertionError("main reached the data layer before checking descriptions")
 
-    monkeypatch.setattr(experiment, "load_panel", fail)
+    monkeypatch.setattr(experiment, "load_frozen_panel", fail)
     monkeypatch.setattr(experiment, "load_committee", fail)
     monkeypatch.setattr(experiment, "run_candidates", fail)
     with pytest.raises(ValueError, match="no DESCRIPTIONS entry for undescribed"):
@@ -48,7 +49,7 @@ def test_main_refuses_before_touching_the_panel(monkeypatch):
 
 
 def test_main_rejects_an_unknown_candidate_name(monkeypatch):
-    monkeypatch.setattr(experiment, "load_panel", lambda *a, **k: pytest.fail("should not run"))
+    monkeypatch.setattr(experiment, "load_frozen_panel", lambda *a, **k: pytest.fail("should not run"))
     with pytest.raises(ValueError, match="unknown candidate"):
         experiment.main(["not_a_model"])
 
@@ -61,8 +62,10 @@ class ReachedTheWalkForward(Exception):
 def old_cache(tmp_path, monkeypatch):
     """A two-ticker price cache dated weeks ago, which the normal loader would download again.
 
-    main is stubbed around the panel: the committee read returns nothing and the
-    walk-forward records the panel it was handed, then stops.
+    Its meta.json says the artifacts were built on prices ending on the cache's
+    last day. main is stubbed around the panel: the committee read records that it
+    happened and returns nothing, and the walk-forward records the panel it was
+    handed, then stops.
     """
     tickers = {"AAA": "Company A", "BBB": "Company B"}
     dates = pd.bdate_range("2024-01-02", periods=30, name="date")
@@ -76,11 +79,20 @@ def old_cache(tmp_path, monkeypatch):
         frame.to_csv(tmp_path / f"{ticker}.csv")
         os.utime(tmp_path / f"{ticker}.csv", (old, old))
 
-    monkeypatch.setattr(data, "TICKERS", tickers)
+    meta = tmp_path / "meta.json"
+    meta.write_text(json.dumps({"last_date": str(dates[-1].date())}))
+
+    monkeypatch.setattr(experiment, "TICKERS", tickers)
+    monkeypatch.setattr(experiment, "META_FILE", meta)
     monkeypatch.setattr(data, "_cache_path", lambda ticker, data_dir: tmp_path / f"{ticker}.csv")
     monkeypatch.setattr(data, "_download", lambda *a, **k: pytest.fail("tsm.experiment downloaded prices"))
-    monkeypatch.setattr(experiment, "load_committee", lambda: (pd.DataFrame(), ["short_term"]))
     seen = {}
+
+    def committee():
+        seen["committee"] = True
+        return pd.DataFrame(), ["short_term"]
+
+    monkeypatch.setattr(experiment, "load_committee", committee)
 
     def stop(panel, skills, verbose=True):
         seen["panel"] = panel
@@ -106,3 +118,26 @@ def test_main_stops_on_a_missing_cache_file_before_the_walk_forward(old_cache):
     with pytest.raises(FileNotFoundError, match="no cached prices for BBB"):
         experiment.main(["itransformer_mae"])
     assert "panel" not in seen
+
+
+def test_main_refuses_a_cache_that_does_not_end_on_the_artifacts_last_date(old_cache):
+    """A cache refreshed after the backtest holds other prices than the ones the committee saw."""
+    cache_dir, seen = old_cache
+    meta = cache_dir / "meta.json"
+    built_on = pd.Timestamp(json.loads(meta.read_text())["last_date"])
+    meta.write_text(json.dumps({"last_date": str((built_on - pd.offsets.BDay(1)).date())}))
+    with pytest.raises(ValueError, match="does not match the committed artifacts"):
+        experiment.main(["itransformer_mae"])
+    assert "committee" not in seen and "panel" not in seen
+
+
+def test_main_refuses_when_a_single_ticker_was_downloaded_again(old_cache):
+    """Aligning the panel would hide this one, so the check runs per ticker."""
+    cache_dir, seen = old_cache
+    path = cache_dir / "BBB.csv"
+    frame = pd.read_csv(path, index_col="date", parse_dates=["date"])
+    extra = frame.iloc[[-1]].set_axis([frame.index[-1] + pd.offsets.BDay(1)]).rename_axis("date")
+    pd.concat([frame, extra]).to_csv(path)
+    with pytest.raises(ValueError, match=r"1 ticker\(s\) \(BBB\)"):
+        experiment.main(["itransformer_mae"])
+    assert "committee" not in seen and "panel" not in seen
