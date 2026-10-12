@@ -10,6 +10,7 @@ __pycache__/
 .pytest_cache/
 algo/data/
 algo/lightning_logs/
+algo/experiments/
 
 # node
 node_modules/

@@ -1,3 +1,4 @@
+import os
 from datetime import date
 
 import numpy as np
@@ -76,6 +77,27 @@ def test_load_prices_rejects_unknown_ticker(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="no price data"):
         data.load_prices("NOPE", data_dir=tmp_path)
     assert not (tmp_path / "NOPE.csv").exists()
+
+
+def test_cache_only_reads_an_old_cache_without_downloading(tmp_path, monkeypatch):
+    """An old cache would normally be downloaded again; cache_only must read it as it is."""
+    cached = data.clean_prices(raw_frame(pd.to_datetime(["2024-01-02", "2024-01-03"])), today=date(2024, 2, 1))
+    path = tmp_path / "AAPL.csv"
+    cached.to_csv(path)
+    old = pd.Timestamp("2024-01-04").timestamp()
+    os.utime(path, (old, old))
+    monkeypatch.setattr(data, "_download", lambda ticker, start: pytest.fail("cache_only downloaded"))
+
+    out = data.load_prices("AAPL", data_dir=tmp_path, cache_only=True)
+    pd.testing.assert_frame_equal(out, cached, check_freq=False)
+
+
+def test_cache_only_stops_on_a_missing_file_without_downloading(tmp_path, monkeypatch):
+    monkeypatch.setattr(data, "_download", lambda ticker, start: pytest.fail("cache_only downloaded"))
+    with pytest.raises(FileNotFoundError, match="no cached prices for AAPL"):
+        data.load_prices("AAPL", data_dir=tmp_path, cache_only=True)
+    with pytest.raises(ValueError, match="contradict"):
+        data.load_prices("AAPL", data_dir=tmp_path, cache_only=True, refresh=True)
 
 
 def test_align_and_truncate_panel():

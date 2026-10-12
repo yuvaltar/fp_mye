@@ -61,13 +61,28 @@ def load_prices(
     start: str = HISTORY_START,
     refresh: bool = False,
     data_dir: Path = DATA_DIR,
+    cache_only: bool = False,
 ) -> pd.DataFrame:
     """Return clean daily prices for ``ticker``.
 
     Uses the local cache if it was fetched today; otherwise downloads again.
     Pass ``refresh=True`` to force a download.
+
+    Pass ``cache_only=True`` to read the cache as it is, however old, and never
+    download. Experiments need this: they are scored against the committed
+    artifacts, so they must see the prices those were built from, not today's.
+    A missing cache file is then an error rather than a reason to download.
     """
     path = _cache_path(ticker, data_dir)
+    if cache_only:
+        if refresh:
+            raise ValueError("refresh=True and cache_only=True contradict each other")
+        if not path.exists():
+            raise FileNotFoundError(
+                f"no cached prices for {ticker} at {path}, and cache_only never downloads. "
+                "Run python -m tsm.backtest to download prices and rebuild the artifacts from them."
+            )
+        return pd.read_csv(path, index_col="date", parse_dates=["date"])
     if not refresh and path.exists() and _fetched_today(path):
         return pd.read_csv(path, index_col="date", parse_dates=["date"])
 
@@ -90,10 +105,13 @@ def align_panel(frames: Panel) -> Panel:
     return {ticker: frame.loc[common] for ticker, frame in frames.items()}
 
 
-def load_panel(tickers: list[str] | None = None, refresh: bool = False) -> Panel:
-    """Clean prices for several tickers, aligned on their common trading days."""
+def load_panel(tickers: list[str] | None = None, refresh: bool = False, cache_only: bool = False) -> Panel:
+    """Clean prices for several tickers, aligned on their common trading days.
+
+    ``cache_only`` is passed to :func:`load_prices`: read the cache, never download.
+    """
     tickers = list(TICKERS) if tickers is None else tickers
-    return align_panel({t: load_prices(t, refresh=refresh) for t in tickers})
+    return align_panel({t: load_prices(t, refresh=refresh, cache_only=cache_only) for t in tickers})
 
 
 def truncate_panel(panel: Panel, position: int) -> Panel:
