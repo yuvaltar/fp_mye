@@ -92,6 +92,10 @@ SECTORS: dict[str, str] = {
 # The market index, also used as a feature by the weak_signals skill.
 MARKET_TICKER = "SPY"
 
+# The market's implied volatility index, an input of the itransformer_path_feats6 experiment.
+# Not a covered stock: frozen once into the cache by `python -m tsm.experiment --freeze-vix`.
+VIX_TICKER = "^VIX"
+
 # First day of price history to download.
 HISTORY_START = "2015-01-01"
 

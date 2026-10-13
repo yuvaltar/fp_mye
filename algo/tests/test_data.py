@@ -108,3 +108,20 @@ def test_align_and_truncate_panel():
     assert panel["A"].index.tolist() == [pd.Timestamp("2024-01-03"), pd.Timestamp("2024-01-04")]
     cut = data.truncate_panel(panel, 0)
     assert all(frame.index[-1] == pd.Timestamp("2024-01-03") for frame in cut.values())
+
+
+def test_freeze_prices_cuts_at_the_date_and_never_overwrites(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_download(ticker, start):
+        calls.append(ticker)
+        return raw_frame(pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04"]))
+
+    monkeypatch.setattr(data, "_download", fake_download)
+    frozen = data.freeze_prices("^VIX", "2024-01-03", data_dir=tmp_path)
+    assert frozen.index.max() == pd.Timestamp("2024-01-03")
+    cached = data.load_prices("^VIX", data_dir=tmp_path, cache_only=True)
+    pd.testing.assert_frame_equal(cached, frozen, check_freq=False)
+    with pytest.raises(FileExistsError, match="delete it first"):
+        data.freeze_prices("^VIX", "2024-01-04", data_dir=tmp_path)
+    assert calls == ["^VIX"]

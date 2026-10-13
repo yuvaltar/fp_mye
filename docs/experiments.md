@@ -56,3 +56,19 @@ heads and layers for the `bias` mode. Rows written before these two columns exis
 | 2026-10-12 | `itransformer_graph_gnn_shuffled` (seed 2) | path_feats + graph layer h + g·A·Linear(h), shuffled correlation map (control) | 0.4947 | +9.4% | 0.4990 | 1.279 | 0.054 | 402s |
 | 2026-10-12 | **`itransformer_graph_gnn_sector` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4926 to 0.4971 (width 0.0044) | 0.4950 | +9.3% | 0.4961 | 1.280 | 0.038 | 1164s total |
 | 2026-10-12 | **`itransformer_graph_gnn_shuffled` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4925 to 0.4970 (width 0.0044) | 0.4947 | +9.4% | 0.4961 | 1.280 | 0.018 | 1207s total |
+| 2026-10-13 | `pair_equal` (seed 0) | Mean of calibrated weak_signals and path_feats, calibrated again; no training (seed = path_feats seed) | 0.4789 | +12.3% | 0.4570 | 0.992 | — | — |
+| 2026-10-13 | `pair_equal` (seed 1) | Mean of calibrated weak_signals and path_feats, calibrated again; no training (seed = path_feats seed) | 0.4842 | +11.3% | 0.4585 | 0.992 | — | — |
+| 2026-10-13 | `pair_equal` (seed 2) | Mean of calibrated weak_signals and path_feats, calibrated again; no training (seed = path_feats seed) | 0.4795 | +12.2% | 0.4595 | 0.991 | — | — |
+| 2026-10-13 | `pair_2019` (seed 0) | 0.2·path_feats + 0.8·weak_signals, w chosen on mean 2019 QLIKE from 0.0-1.0, calibrated again; no training | 0.4857 | +11.1% | 0.4526 | 0.997 | — | — |
+| 2026-10-13 | `pair_2019` (seed 1) | 0.2·path_feats + 0.8·weak_signals, w chosen on mean 2019 QLIKE from 0.0-1.0, calibrated again; no training | 0.4882 | +10.6% | 0.4531 | 0.997 | — | — |
+| 2026-10-13 | `pair_2019` (seed 2) | 0.2·path_feats + 0.8·weak_signals, w chosen on mean 2019 QLIKE from 0.0-1.0, calibrated again; no training | 0.4855 | +11.1% | 0.4535 | 0.996 | — | — |
+| 2026-10-13 | `committee_v2` (seed 0) | Equal-weight mean of short_term, regime, weak_signals and path_feats (in place of multivariate), calibrated again; no training | 0.4977 | +8.8% | 0.4537 | 0.986 | — | — |
+| 2026-10-13 | `committee_v2` (seed 1) | Equal-weight mean of short_term, regime, weak_signals and path_feats (in place of multivariate), calibrated again; no training | 0.5014 | +8.2% | 0.4550 | 0.987 | — | — |
+| 2026-10-13 | `committee_v2` (seed 2) | Equal-weight mean of short_term, regime, weak_signals and path_feats (in place of multivariate), calibrated again; no training | 0.4977 | +8.8% | 0.4549 | 0.986 | — | — |
+| 2026-10-13 | **`pair_equal` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4789 to 0.4842 (width 0.0052) | 0.4809 | +11.9% | 0.4583 | 0.992 | — | — |
+| 2026-10-13 | **`pair_2019` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4855 to 0.4882 (width 0.0027) | 0.4864 | +10.9% | 0.4531 | 0.997 | — | — |
+| 2026-10-13 | **`committee_v2` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4977 to 0.5014 (width 0.0037) | 0.4990 | +8.6% | 0.4546 | 0.986 | — | — |
+| 2026-10-13 | `itransformer_path_feats6` (seed 0) | path_feats + 2 channels: overnight gap log(open/prev close) and log VIX close (6 channels) | 0.4934 | +9.6% | 0.5120 | 1.292 | — | 318s |
+| 2026-10-13 | `itransformer_path_feats6` (seed 1) | path_feats + 2 channels: overnight gap log(open/prev close) and log VIX close (6 channels) | 0.5112 | +6.4% | 0.5029 | 1.290 | — | 319s |
+| 2026-10-13 | `itransformer_path_feats6` (seed 2) | path_feats + 2 channels: overnight gap log(open/prev close) and log VIX close (6 channels) | 0.4934 | +9.6% | 0.5090 | 1.276 | — | 319s |
+| 2026-10-13 | **`itransformer_path_feats6` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4934 to 0.5112 (width 0.0178) | 0.4993 | +8.5% | 0.5080 | 1.286 | — | 956s total |

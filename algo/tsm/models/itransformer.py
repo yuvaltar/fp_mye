@@ -11,8 +11,9 @@ This module is an experiment. The skills it builds are deliberately NOT in
 Layout, per date: each stock's last ``input_size`` days becomes one token, so
 attention runs across stocks rather than across time, which is what makes it an
 *inverted* transformer. Options widen that token without ever adding tokens:
-``features`` gives each stock 4 channels instead of 1, and ``path`` makes the
-head predict the whole 1..5 day path instead of only the 5th value.
+``features`` gives each stock 4 channels instead of 1 (``gap_vix`` adds a 5th
+and 6th: the overnight gap and the log VIX), and ``path`` makes the head predict
+the whole 1..5 day path instead of only the 5th value.
 
 ``graph`` feeds the market map (``tsm.models.graph``) in, in one of two ways,
 each behind learned gates that start at 0 so the model starts as the plain one
@@ -50,6 +51,8 @@ EPS_RANGE = 1e-6
 
 # Channels per stock when features=True: log vol, log return, log range, log1p volume.
 N_FEATURES = 4
+# With gap_vix: the overnight gap log(open_t / close_t-1) and log VIX close, the same for every stock.
+N_FEATURES_GAP_VIX = 6
 
 # exp(u) overflows to inf for a wildly wrong forecast, which would poison the
 # gradients. exp(10) = 22026 is far outside any ratio a sane forecast produces,
@@ -104,11 +107,23 @@ def log_vol_tail(panel: Panel, rows: int) -> np.ndarray:
     return np.concatenate([head, out])
 
 
-def feature_tail(panel: Panel, rows: int) -> np.ndarray:
+def _vix_tail(panel: Panel, rows: int) -> np.ndarray:
+    """``(rows, stocks)`` of the ``vix`` column that ``tsm.experiment`` adds to every frame."""
+    try:
+        return _tail(panel, "vix", rows)
+    except KeyError:
+        raise KeyError(
+            "gap_vix needs a 'vix' column in every frame; tsm.experiment adds it from the frozen ^VIX cache"
+        ) from None
+
+
+def feature_tail(panel: Panel, rows: int, gap_vix: bool = False) -> np.ndarray:
     """``(rows, stocks, 4)``: log 5-day vol, log return, log range, log1p volume.
 
     Every channel for day ``t`` uses only data up to and including day ``t``:
     the vol channel spans t-4..t, the return needs t-1, the other two only t.
+    With ``gap_vix``, ``(rows, stocks, 6)``: also the overnight gap (open of t,
+    close of t-1) and the log VIX close of t.
     """
     vol = log_vol_tail(panel, rows)
     closes = _tail(panel, "close", rows + 1)
@@ -116,11 +131,15 @@ def feature_tail(panel: Panel, rows: int) -> np.ndarray:
     highs, lows = _tail(panel, "high", rows), _tail(panel, "low", rows)
     log_range = np.log(np.clip(highs / lows, EPS_RANGE, None))
     log_volume = np.log1p(_tail(panel, "volume", rows))
-    return np.stack([vol, returns, log_range, log_volume], axis=-1)
+    if not gap_vix:
+        return np.stack([vol, returns, log_range, log_volume], axis=-1)
+    gap = np.log(_tail(panel, "open", rows) / closes[:-1])
+    log_vix = np.log(_vix_tail(panel, rows))
+    return np.stack([vol, returns, log_range, log_volume, gap, log_vix], axis=-1)
 
 
-def feature_series(panel: Panel) -> np.ndarray:
-    """``(days, stocks, 4)`` over the whole panel, for ``fit``.
+def feature_series(panel: Panel, gap_vix: bool = False) -> np.ndarray:
+    """``(days, stocks, 4)`` over the whole panel, for ``fit`` (6 channels with ``gap_vix``).
 
     The vol channel comes from ``log_vol_series`` so it matches what the
     single-channel model trains on, NaNs in the first rows included.
@@ -132,7 +151,12 @@ def feature_series(panel: Panel) -> np.ndarray:
     returns[1:] = np.log(closes[1:] / closes[:-1])
     log_range = np.log(np.clip(_tail(panel, "high", days) / _tail(panel, "low", days), EPS_RANGE, None))
     log_volume = np.log1p(_tail(panel, "volume", days))
-    return np.stack([vol, returns, log_range, log_volume], axis=-1)
+    if not gap_vix:
+        return np.stack([vol, returns, log_range, log_volume], axis=-1)
+    gap = np.full_like(closes, np.nan)
+    gap[1:] = np.log(_tail(panel, "open", days)[1:] / closes[:-1])
+    log_vix = np.log(_vix_tail(panel, days))
+    return np.stack([vol, returns, log_range, log_volume, gap, log_vix], axis=-1)
 
 
 def training_positions(
@@ -312,6 +336,7 @@ class ITransformerSkill(TemporalSkill):
         loss: str = "mae",
         path: bool = False,
         features: bool = False,
+        gap_vix: bool = False,
         graph: str | None = None,
         graph_source: str = "corr",
         name: str | None = None,
@@ -334,13 +359,18 @@ class ITransformerSkill(TemporalSkill):
             raise ValueError(f"graph_source must be one of {GRAPH_SOURCES}, got {graph_source!r}")
         self.loss = loss
         self.path = path
+        if gap_vix and not features:
+            raise ValueError("gap_vix adds channels to features=True; it cannot be used alone")
         self.features = features
+        self.gap_vix = gap_vix
         self.graph = graph
         self.graph_source = graph_source
         # A path head predicts the whole 5-step path; a single head only the 5th value.
         self.n_outputs = HORIZON_DAYS if path else 1
-        self.n_channels = N_FEATURES if features else 1
-        default = f"itransformer_{loss}" + ("_path" if path else "") + ("_feats" if features else "")
+        self.n_channels = (N_FEATURES_GAP_VIX if gap_vix else N_FEATURES) if features else 1
+        # Names must differ between variants: the backtest tracks each skill's fits by name.
+        channels = ("_feats6" if gap_vix else "_feats") if features else ""
+        default = f"itransformer_{loss}" + ("_path" if path else "") + channels
         if graph is not None:
             default = f"itransformer_graph_{graph}_{graph_source}"
         self.name = name if name is not None else default
@@ -411,7 +441,7 @@ class ITransformerSkill(TemporalSkill):
     def fit(self, panel: Panel) -> None:
         model = self._build()
         if self.features:
-            inputs = feature_series(panel)
+            inputs = feature_series(panel, gap_vix=self.gap_vix)
             vol = inputs[..., 0]
             # A date is usable only when every channel of every stock is there.
             validity = inputs.reshape(len(inputs), -1)
@@ -457,7 +487,7 @@ class ITransformerSkill(TemporalSkill):
         # 2203 dates is what made a walk-forward slow. These build the same
         # numbers in numpy, about 35x faster on 52 tickers.
         if self.features:
-            tail = feature_tail(panel, self.input_size)
+            tail = feature_tail(panel, self.input_size, gap_vix=self.gap_vix)
             x = torch.as_tensor(tail.transpose(1, 2, 0)[None], dtype=torch.float32)
         else:
             tail = log_vol_tail(panel, self.input_size)
@@ -484,6 +514,13 @@ CANDIDATES: dict[str, dict] = {
         "path": True,
         "features": True,
         "name": "itransformer_path_feats",
+    },
+    "itransformer_path_feats6": {
+        "loss": "mae",
+        "path": True,
+        "features": True,
+        "gap_vix": True,
+        "name": "itransformer_path_feats6",
     },
     # path_feats with the market map: itransformer_graph_{gnn,bias}_{corr,sector,shuffled}.
     **{

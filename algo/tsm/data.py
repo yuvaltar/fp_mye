@@ -94,6 +94,24 @@ def load_prices(
     return prices
 
 
+def freeze_prices(ticker: str, until: str, data_dir: Path = DATA_DIR) -> pd.DataFrame:
+    """Download ``ticker`` once and cache it cut at ``until``, for the frozen cache of experiments.
+
+    Refuses to overwrite an existing cache file: a frozen series stays frozen.
+    Delete the file to freeze it again.
+    """
+    path = _cache_path(ticker, data_dir)
+    if path.exists():
+        raise FileExistsError(f"{path} already exists; delete it first to freeze {ticker} again")
+    prices = clean_prices(_download(ticker, HISTORY_START))
+    prices = prices[prices.index <= pd.Timestamp(until)]
+    if prices.empty:
+        raise ValueError(f"no price data for {ticker!r} up to {until}")
+    data_dir.mkdir(parents=True, exist_ok=True)
+    prices.to_csv(path)
+    return prices
+
+
 Panel = dict[str, pd.DataFrame]
 
 

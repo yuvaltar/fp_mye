@@ -19,7 +19,13 @@ downloads, because the committee it is compared with was built from those
 prices. A fresh download adds days and shifts adjusted closes, which would make
 a candidate's numbers incomparable with the saved ones. A missing cache file
 stops the run, and so does a cache whose last date is not the artifacts'
-``last_date``.
+``last_date``. The VIX (``^VIX``) is part of that frozen cache, checked the same
+way; it is frozen once with ``--freeze-vix`` and reaches every stock's frame as
+a ``vix`` column.
+
+Runs go one after another, never in parallel: splitting torch's threads between
+processes changes the floating-point sums, and the numbers stop reproducing
+exactly (seed 0 of path_feats gave 0.4925 instead of 0.4924).
 """
 from __future__ import annotations
 
@@ -32,8 +38,8 @@ from pathlib import Path
 import pandas as pd
 
 from tsm.backtest import BACKTEST_START, BASELINE_SKILL, TEST_START, calibrate, run_skills
-from tsm.config import ARTIFACTS_DIR, DOCS_DIR, TICKERS
-from tsm.data import Panel, align_panel, load_prices
+from tsm.config import ARTIFACTS_DIR, DOCS_DIR, TICKERS, VIX_TICKER
+from tsm.data import Panel, align_panel, freeze_prices, load_prices
 from tsm.models.itransformer import CANDIDATES, build_candidate, summarize_gates
 from tsm.report import scored_rows
 from tsm.skills.base import TemporalSkill
@@ -60,6 +66,7 @@ DESCRIPTIONS = {
     "itransformer_mae_path": "Own PyTorch iTransformer, 5-step path head, MAE over the 5 steps",
     "itransformer_qlike_path": "Own PyTorch iTransformer, 5-step path head, QLIKE over the 5 steps",
     "itransformer_path_feats": "Own PyTorch iTransformer, 5-step path head, 4 input channels (vol, return, range, volume)",
+    "itransformer_path_feats6": "path_feats + 2 channels: overnight gap log(open/prev close) and log VIX close (6 channels)",
     "itransformer_graph_gnn_corr": "path_feats + graph layer h + g·A·Linear(h), market-adjusted correlation map",
     "itransformer_graph_gnn_sector": "path_feats + graph layer h + g·A·Linear(h), sector map",
     "itransformer_graph_gnn_shuffled": "path_feats + graph layer h + g·A·Linear(h), shuffled correlation map (control)",
@@ -123,11 +130,18 @@ def load_frozen_panel() -> Panel:
     compared with a committee built from other prices, and nothing would fail.
     Each ticker is checked before alignment, because aligning would hide a single
     ticker that was downloaded again.
+
+    The frozen ``^VIX`` series is checked the same way, then added to every
+    stock's frame as a ``vix`` column (its close). It does not take part in the
+    alignment, so the stocks keep exactly the committee's dates; a stock day
+    without a VIX value carries the last known one forward, which only ever uses
+    the past.
     """
     last_date = pd.Timestamp(json.loads(META_FILE.read_text())["last_date"])
     frames = {ticker: load_prices(ticker, cache_only=True) for ticker in TICKERS}
+    vix = load_prices(VIX_TICKER, cache_only=True)
     mismatched: dict[str, list[str]] = {}
-    for ticker, frame in frames.items():
+    for ticker, frame in {**frames, VIX_TICKER: vix}.items():
         if frame.index[-1] != last_date:
             mismatched.setdefault(frame.index[-1].date().isoformat(), []).append(ticker)
     if mismatched:
@@ -141,7 +155,28 @@ def load_frozen_panel() -> Panel:
             "built from: restore that cache, or re-run python -m tsm.backtest to rebuild the "
             "artifacts from the current one."
         )
-    return align_panel(frames)
+    panel = align_panel(frames)
+    dates = next(iter(panel.values())).index
+    vix_close = vix["close"].reindex(vix.index.union(dates)).ffill().reindex(dates)
+    if vix_close.isna().any():
+        raise ValueError(f"the frozen {VIX_TICKER} series starts after {dates[0].date()}, the first stock day")
+    for frame in panel.values():
+        frame["vix"] = vix_close.to_numpy()
+    return panel
+
+
+def freeze_vix() -> None:
+    """Download ^VIX once into the cache, cut at the artifacts' last_date, and say what it holds."""
+    last_date = json.loads(META_FILE.read_text())["last_date"]
+    prices = freeze_prices(VIX_TICKER, last_date)
+    stocks = align_panel({ticker: load_prices(ticker, cache_only=True) for ticker in TICKERS})
+    dates = next(iter(stocks.values())).index
+    missing = dates.difference(prices.index)
+    print(
+        f"Froze {VIX_TICKER}: {len(prices)} days, {prices.index[0].date()} to {prices.index[-1].date()} "
+        f"(cut at last_date {last_date}). Stock days without a VIX value, filled from the day before: "
+        f"{len(missing)}{' (' + ', '.join(str(d.date()) for d in missing[:10]) + ')' if len(missing) else ''}"
+    )
 
 
 def load_committee(artifacts_dir=ARTIFACTS_DIR) -> tuple[pd.DataFrame, list[str]]:
@@ -266,8 +301,9 @@ def _summary_row(name: str, labels: list[str], table: pd.DataFrame, runtimes, se
         f"Mean over seeds {seed_list}; QLIKE spread {part['QLIKE'].min():.4f} to "
         f"{part['QLIKE'].max():.4f} (width {part['QLIKE'].max() - part['QLIKE'].min():.4f})"
     )
-    total = sum(runtimes[label] for label in labels)
-    return _row(name, f"**`{name}` mean of {len(labels)} seeds**", description, row, f"{total}s total", today)
+    times = [runtimes.get(label) for label in labels]
+    total = "—" if None in times else f"{sum(times)}s total"
+    return _row(name, f"**`{name}` mean of {len(labels)} seeds**", description, row, total, today)
 
 
 def _header() -> str:
@@ -300,10 +336,16 @@ def migrate_table() -> bool:
 def append_rows(
     table: pd.DataFrame,
     runs: list[tuple[str, str, int]],
-    runtimes: dict[str, int],
+    runtimes: dict[str, int | None],
     seeds: list[int],
+    descriptions: dict[str, str] | None = None,
 ) -> str:
-    """Create the file with the committee rows if missing, then append this run's rows."""
+    """Create the file with the committee rows if missing, then append this run's rows.
+
+    ``descriptions`` defaults to ``DESCRIPTIONS``; ``tsm.ensemble`` passes its own.
+    A runtime of None (nothing was trained) reads as a dash.
+    """
+    descriptions = DESCRIPTIONS if descriptions is None else descriptions
     today = date.today().isoformat()
     EXPERIMENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     if not EXPERIMENTS_FILE.exists():
@@ -319,7 +361,8 @@ def append_rows(
     lines = []
     for label, name, seed in runs:
         experiment = f"`{name}` (seed {seed})" if len(seeds) > 1 else f"`{name}`"
-        lines.append(_row(label, experiment, DESCRIPTIONS[name], table.loc[label], f"{runtimes[label]}s", today))
+        runtime = "—" if runtimes.get(label) is None else f"{runtimes[label]}s"
+        lines.append(_row(label, experiment, descriptions[name], table.loc[label], runtime, today))
     if len(seeds) > 1:
         for name in dict.fromkeys(name for _, name, _ in runs):
             labels = [label for label, n, _ in runs if n == name]
@@ -341,7 +384,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--seeds", type=int, nargs="+", default=[0], help="seeds to run each candidate with"
     )
+    parser.add_argument(
+        "--freeze-vix", action="store_true", help=f"download {VIX_TICKER} once into the frozen cache, then stop"
+    )
     args = parser.parse_args(argv)
+    if args.freeze_vix:
+        freeze_vix()
+        return
     names = args.names or list(CANDIDATES)
     seeds = list(dict.fromkeys(args.seeds))
     # Name first, so an unknown model is not reported as a missing description.
