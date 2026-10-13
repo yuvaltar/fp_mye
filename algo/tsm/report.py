@@ -235,6 +235,39 @@ comes from the real earnings dates, not from the mechanism.
 """
 
 
+def backtest_numbers(frame: pd.DataFrame, meta: dict) -> dict:
+    """Every number the report states, computed once.
+
+    ``write_report`` writes them into docs/backtest.md and the API's ``/performance``
+    serves them, so the two can never disagree. Keys: ``columns`` (model -> frame
+    column), ``rows`` (the scored rows), ``table`` (RMSE, MAE, QLIKE and their % vs
+    HAR-RV per model), ``tstat``, ``per_ticker`` (QLIKE per ticker and model, in the
+    order the tickers appear), ``wins`` (tickers where the supervisor beats HAR-RV)
+    and ``weights`` (mean, min and max weight per skill).
+    """
+    skill_names = [s["name"] for s in meta["skills"]]
+    with_earnings = bool(meta.get("earnings", {}).get("enabled"))
+    columns = model_columns(skill_names, plain_baseline=with_earnings)
+    rows = scored_rows(frame, meta["test_start"])
+    # Per-ticker QLIKE: on how many tickers does the supervisor beat the baseline?
+    per_ticker = rows.groupby("ticker").apply(
+        lambda g: pd.Series({m: qlike(g["realized_vol"], g[c]).mean() for m, c in columns.items()}),
+        include_groups=False,
+    )
+    order = rows["ticker"].unique()
+    return {
+        "skill_names": skill_names,
+        "with_earnings": with_earnings,
+        "columns": columns,
+        "rows": rows,
+        "table": metrics_table(rows, columns),
+        "tstat": loss_difference_tstat(rows),
+        "per_ticker": per_ticker.loc[order],
+        "wins": int((per_ticker["supervisor"] < per_ticker[BASELINE]).sum()),
+        "weights": rows[[f"w_{s}" for s in skill_names]].agg(["mean", "min", "max"]).T,
+    }
+
+
 def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR, earnings: dict | None = None) -> pd.DataFrame:
     """Write docs/backtest.md, results.csv, weights.csv and the charts. Returns the metrics table.
 
@@ -243,15 +276,13 @@ def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR, earnings: d
     """
     assets = docs_dir / "backtest_assets"
     assets.mkdir(parents=True, exist_ok=True)
-    skill_names = [s["name"] for s in meta["skills"]]
-    with_earnings = bool(meta.get("earnings", {}).get("enabled"))
-    columns = model_columns(skill_names, plain_baseline=with_earnings)
+    numbers = backtest_numbers(frame, meta)
+    skill_names, with_earnings, columns = numbers["skill_names"], numbers["with_earnings"], numbers["columns"]
+    rows, table, tstat = numbers["rows"], numbers["table"], numbers["tstat"]
+    per_ticker, wins = numbers["per_ticker"], numbers["wins"]
     labels = dict(LABELS)
     if with_earnings:
         labels["baseline"] = "HAR-RV baseline (plain `short_term`, no earnings jump)"
-    rows = scored_rows(frame, meta["test_start"])
-    table = metrics_table(rows, columns)
-    tstat = loss_difference_tstat(rows)
 
     results = rows.melt(
         id_vars=["date", "ticker", "realized_vol"], value_vars=list(columns.values()),
@@ -262,13 +293,6 @@ def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR, earnings: d
     weight_columns = [f"w_{s}" for s in skill_names]
     rows[["date", "ticker", *weight_columns]].to_csv(assets / "weights.csv", index=False, float_format="%.6f")
     _charts(rows, table, skill_names, assets)
-
-    # Per-ticker QLIKE: on how many tickers does the supervisor beat the baseline?
-    per_ticker = rows.groupby("ticker").apply(
-        lambda g: pd.Series({m: qlike(g["realized_vol"], g[c]).mean() for m, c in columns.items()}),
-        include_groups=False,
-    )
-    wins = int((per_ticker["supervisor"] < per_ticker[BASELINE]).sum())
 
     gain = table.loc["supervisor", "QLIKE vs HAR-RV"]
     gain_rmse = table.loc["supervisor", "RMSE vs HAR-RV"]
@@ -295,7 +319,7 @@ def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR, earnings: d
         f"changes QLIKE by {eq_gain:+.1f}% (positive = the weighting helps)."
     )
 
-    weight_stats = rows[weight_columns].agg(["mean", "min", "max"]).T
+    weight_stats = numbers["weights"]
     weight_lines = ["| Skill | Horizon | Mean weight | Min | Max |", "| --- | --- | ---: | ---: | ---: |"]
     horizons = {s["name"]: s["horizon"] for s in meta["skills"]}
     for name in skill_names:

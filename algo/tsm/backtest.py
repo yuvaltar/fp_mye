@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from datetime import date
 from collections.abc import Callable
 from itertools import product
 
@@ -30,6 +31,7 @@ from tsm.data import Panel, load_panel, truncate_panel
 from tsm.earnings_jump import (
     CALENDAR_EXTENSION,
     add_earnings_jump,
+    earnings_artifact,
     load_releases,
     reaction_positions,
     trading_calendar,
@@ -307,11 +309,12 @@ def main(argv: list[str] | None = None) -> None:
     panel = load_panel(cache_only=args.cache_only)
     skills = build_skills()
     names = [s.name for s in skills]
-    reactions = None
+    reactions = releases = calendar = None
     if not args.no_earnings:
         days = next(iter(panel.values())).index
         releases = load_releases()
-        reactions = reaction_positions(releases, trading_calendar(days))
+        calendar = trading_calendar(days)
+        reactions = reaction_positions(releases, calendar)
         never = [t for t in panel if t not in set(releases["ticker"])]
         no_next = [t for t in without_next_release(releases, list(panel), days[-1]) if t not in never]
         if never:
@@ -332,6 +335,12 @@ def main(argv: list[str] | None = None) -> None:
 
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     frame.to_csv(ARTIFACTS_DIR / "predictions.csv", index=False, float_format="%.6f")
+    earnings_file = ARTIFACTS_DIR / "earnings.csv"
+    if reactions is not None:
+        # The report dates the API needs for earnings_date (predictions.csv only has reaction days).
+        earnings_artifact(frame, releases, calendar).to_csv(earnings_file, index=False, date_format="%Y-%m-%d")
+    elif earnings_file.exists():
+        earnings_file.unlink()  # without the layer there is no earnings week to explain
     meta = {
         "model_version": MODEL_VERSION,
         "skills": [{"name": s.name, "horizon": s.horizon} for s in skills],
@@ -339,6 +348,7 @@ def main(argv: list[str] | None = None) -> None:
         "test_start": TEST_START,
         "calibration_window": CALIBRATION_WINDOW,
         "last_date": str(frame["date"].max().date()),
+        "generated_at": date.today().isoformat(),
         "cache_only": args.cache_only,
         "earnings": {"enabled": reactions is not None, "known_days_ahead": HORIZON_DAYS, "source": "Yahoo Finance"}
         if reactions is not None
