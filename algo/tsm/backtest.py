@@ -3,10 +3,13 @@
 For every evaluation date the skills only receive the prices known on that
 date, predict the next 5 trading days, and are scored later against what
 really happened. ``python -m tsm.backtest`` runs it on real data, saves the
-predictions the API serves, and writes the report.
+predictions the API serves, and writes the report. ``--cache-only`` runs it on
+the price cache as it is, without downloading, so its numbers stay comparable
+with docs/experiments.md (which is scored on that frozen cache).
 """
 from __future__ import annotations
 
+import argparse
 import json
 import time
 from itertools import product
@@ -179,11 +182,22 @@ def run_pipeline(panel: Panel, skills: list[TemporalSkill], step: int = 1, verbo
     return apply_supervisor(frame, supervisor, names), supervisor
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     from tsm.report import write_report
 
+    parser = argparse.ArgumentParser(
+        prog="python -m tsm.backtest",
+        description="Walk-forward backtest: artifacts for the API and docs/backtest.md.",
+    )
+    parser.add_argument(
+        "--cache-only",
+        action="store_true",
+        help="use the price cache as it is and never download (the frozen prices of docs/experiments.md)",
+    )
+    args = parser.parse_args(argv)
+
     started = time.time()
-    panel = load_panel()
+    panel = load_panel(cache_only=args.cache_only)
     skills = build_skills()
     print(f"Walk-forward backtest on {len(panel)} tickers...", flush=True)
     frame, supervisor = run_pipeline(panel, skills, verbose=True)
@@ -197,6 +211,7 @@ def main() -> None:
         "test_start": TEST_START,
         "calibration_window": CALIBRATION_WINDOW,
         "last_date": str(frame["date"].max().date()),
+        "cache_only": args.cache_only,
         "runtime_seconds": round(time.time() - started),
     }
     (ARTIFACTS_DIR / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")

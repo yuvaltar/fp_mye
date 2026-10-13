@@ -22,6 +22,11 @@ def make_panel(n_days=420, seed=0):
             {"open": open_, "high": high, "low": low, "close": close, "volume": volume},
             index=dates.rename("date"),
         )
+    # The VIX column tsm.experiment adds to every frame, drawn from its own stream so
+    # the price columns above are exactly what they were before it existed.
+    vix = 15 * np.exp(np.cumsum(np.random.default_rng(seed + 1000).normal(0, 0.05, n_days)))
+    for frame in panel.values():
+        frame["vix"] = vix
     return panel
 
 
@@ -36,6 +41,18 @@ def market_ticker(monkeypatch):
 @pytest.fixture
 def panel():
     return make_panel()
+
+
+@pytest.fixture
+def synthetic_sectors(monkeypatch):
+    """Sectors for the synthetic tickers, so the "sector" graph source can run on them.
+
+    Opt-in rather than autouse: elsewhere config.SECTORS must cover exactly the real tickers.
+    """
+    from tsm import config
+
+    monkeypatch.setitem(config.SECTORS, "AAA", "Synthetic A")
+    monkeypatch.setitem(config.SECTORS, "BBB", "Synthetic B")
 
 
 def corrupt_after(panel, position, seed=99):
