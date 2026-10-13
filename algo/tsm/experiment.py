@@ -280,9 +280,11 @@ def score(frame: pd.DataFrame, names: list[str], test_start: str = TEST_START) -
 def _row(label: str, experiment: str, description: str, row, runtime: str, today: str) -> str:
     gate = row.get("gate")
     gate_cell = "—" if gate is None or pd.isna(gate) else f"{gate:.3f}"
+    # A combination built from calibrated skills (supervisor, equal-weight) has no factor of its own.
+    factor_cell = "—" if pd.isna(row["factor"]) else f"{row['factor']:.3f}"
     return (
         f"| {today} | {experiment} | {description} | {row['QLIKE']:.4f} | "
-        f"{row['gain']:+.1f}% | {row['QLIKE_2019']:.4f} | {row['factor']:.3f} | {gate_cell} | {runtime} |"
+        f"{row['gain']:+.1f}% | {row['QLIKE_2019']:.4f} | {factor_cell} | {gate_cell} | {runtime} |"
     )
 
 

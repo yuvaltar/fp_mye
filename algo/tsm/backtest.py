@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from collections.abc import Callable
 from itertools import product
 
 import numpy as np
@@ -128,11 +129,18 @@ def calibrate(
     return frame
 
 
-def add_targets_and_baselines(frame: pd.DataFrame, panel: Panel, skill_names: list[str]) -> pd.DataFrame:
+def add_targets_and_baselines(
+    frame: pd.DataFrame,
+    panel: Panel,
+    skill_names: list[str],
+    calibrator: Callable[[pd.DataFrame, list[str]], pd.DataFrame] = calibrate,
+) -> pd.DataFrame:
     """Add what really happened, calibrate the skills, then build the baselines.
 
     The HAR-RV baseline is ``pred_short_term`` after calibration, so it gets the
     same treatment as every other skill and the comparison stays fair.
+    ``calibrator`` is ``calibrate`` for the backtest; experiments (tsm.earnings_layer)
+    pass another rule and keep every other step exactly as here.
     """
     frame = frame.copy()
     realized, naive = [], []
@@ -142,7 +150,7 @@ def add_targets_and_baselines(frame: pd.DataFrame, panel: Panel, skill_names: li
         naive.append(pd.Series(realized_vol(close).to_numpy()[group["position"]], index=group.index))
     frame["realized_vol"] = pd.concat(realized)
     frame["naive"] = pd.concat(naive)
-    frame = calibrate(frame, skill_names)
+    frame = calibrator(frame, skill_names)
     frame["equal_weight"] = frame[[f"pred_{s}" for s in skill_names]].mean(axis=1)
     frame["baseline"] = frame[f"pred_{BASELINE_SKILL}"]
     return frame

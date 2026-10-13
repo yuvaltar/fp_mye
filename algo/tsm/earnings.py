@@ -11,7 +11,7 @@
 
 Yahoo is the source of earnings dates; SEC is the independent check (where both
 have data, 99.6% of dates agree within one trading day). SEC misses some
-companies (XOM files no earnings 8-K; TEVA, AVGO and DIS only from 2017-2019) and
+companies (XOM files no earnings 8-K; TEVA, AVGO and DIS only from 2018, 2019 and 2020) and
 also files non-earnings news under item 2.02 (e.g. Tesla's delivery numbers).
 
 **Assumption:** a release date, and whether it comes before the open or after the
