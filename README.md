@@ -4,9 +4,11 @@ A stock-tracking platform with a multi-agent prediction engine. Each "skill" is 
 
 | Folder | What | Owner |
 | --- | --- | --- |
-| `algo/` | Python 3.12 engine + FastAPI server | Elie, Yuval |
+| `algo/` | Python 3.12 engine + FastAPI server | Yuval |
 | `web/` | Next.js 16 + TypeScript + Tailwind site | Maor |
 | `contracts/` | API contract (JSON Schema) and mock responses | both teams, by agreement only |
-| `docs/` | 7-day plan, backtest report | both |
+| `docs/` | 7-day plan, backtest report, experiment log | both |
+
+Elie has left the project; Yuval now owns all of `algo/`. The website is built on the mocks on branch `web-initial-site`.
 
 Setup commands, rules and conventions are in [`CLAUDE.md`](CLAUDE.md); the schedule is in [`docs/plan.md`](docs/plan.md).
