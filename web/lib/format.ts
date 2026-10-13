@@ -99,6 +99,14 @@ export function formatDate(iso: string): string {
   return `${Number(match[3])} ${month} ${match[1]}`;
 }
 
+/** "2026-10-13" -> "Tuesday". Pure date arithmetic, no time zone surprises. */
+export function formatWeekday(iso: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const day = new Date(`${iso}T00:00:00Z`).getUTCDay();
+  const names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  return names[day] ?? iso;
+}
+
 /** "2026-10-07" -> "Oct 2026". Axis labels for ranges longer than a year. */
 export function formatMonthYear(iso: string): string {
   const full = formatDate(iso);

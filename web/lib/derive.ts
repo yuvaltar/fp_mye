@@ -456,8 +456,14 @@ const MODEL_LABELS: Record<string, string> = {
   equal_weight: "Equal-weight skills",
 };
 
-/** Label for a model row: baselines get fixed labels, skills use skillLabel. */
-export function modelLabel(name: string): string {
+/**
+ * Label for a model row: baselines get fixed labels, skills use skillLabel.
+ * Pass the names of all rows shown together: since the engine's earnings layer
+ * the skill short_term (HAR-RV plus the earnings jump) is no longer the same
+ * as the baseline har_rv, and when both appear they must not share a name.
+ */
+export function modelLabel(name: string, allNames: readonly string[] = []): string {
+  if (name === "short_term" && allNames.includes("har_rv")) return "HAR-RV + earnings jump";
   return MODEL_LABELS[name] ?? skillLabel(name);
 }
 

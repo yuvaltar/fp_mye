@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import {
   NotReadyError,
   getHistory,
+  getOverview,
   getPrediction,
+  getTickers,
 } from "./api/client.ts";
 import {
   AXIS_YEAR_THRESHOLD_DAYS,
@@ -11,14 +13,16 @@ import {
   VOL_CRISIS_ABOVE,
   VOL_STORMY_ABOVE,
   downsampleWeekly,
+  modelLabel,
   skillColorIndex,
   skillDescription,
   skillLabel,
   sliceByDays,
   spanDays,
+  weightsToRows,
   volLevel,
 } from "./derive.ts";
-import { formatMonthYear } from "./format.ts";
+import { formatMonthYear, formatWeekday } from "./format.ts";
 import { loadWatchlist } from "./watchlist.ts";
 
 const originalFetch = globalThis.fetch;
@@ -139,4 +143,45 @@ test("itransformer, the engine's own model, has a label, a description and a sta
   assert.equal(skillColorIndex("itransformer"), 3);
   const real = ["short_term", "weak_signals", "regime", "itransformer"].map(skillColorIndex);
   assert.equal(new Set(real).size, 4);
+});
+
+test("modelLabel keeps the HAR-RV skill and the HAR-RV baseline apart when both are shown", () => {
+  assert.equal(modelLabel("har_rv"), "HAR-RV baseline");
+  // Without the baseline row (an engine without the earnings layer) short_term is HAR-RV itself.
+  assert.equal(modelLabel("short_term", ["supervisor", "short_term"]), "HAR-RV");
+  assert.equal(modelLabel("short_term", ["supervisor", "har_rv", "short_term"]), "HAR-RV + earnings jump");
+  assert.notEqual(
+    modelLabel("short_term", ["har_rv", "short_term"]),
+    modelLabel("har_rv", ["har_rv", "short_term"]),
+  );
+});
+
+test("formatWeekday names the day, including a Saturday report", () => {
+  assert.equal(formatWeekday("2026-10-13"), "Tuesday");
+  assert.equal(formatWeekday("2026-10-08"), "Thursday");
+  assert.equal(formatWeekday("2026-10-10"), "Saturday");
+  assert.equal(formatWeekday("nope"), "nope");
+});
+
+test("engine requests carry a generous timeout signal", async () => {
+  process.env.NEXT_PUBLIC_USE_MOCKS = "false";
+  const signals: (AbortSignal | null | undefined)[] = [];
+  globalThis.fetch = async (_input, init) => {
+    signals.push(init?.signal);
+    return new Response(JSON.stringify({ tickers: [], entries: [] }), { status: 200 });
+  };
+  await getTickers();
+  await getOverview();
+  assert.equal(signals.length, 2);
+  assert.ok(signals.every((s) => s instanceof AbortSignal && !s.aborted));
+});
+
+test("weights that sum to 1 within 1e-6 are fine: the site never compares them exactly", async () => {
+  const total = [0.21079, 0.216739, 0.296992, 0.27548].reduce((a, b) => a + b, 0);
+  assert.notEqual(total, 1);
+  assert.ok(Math.abs(total - 1) < 1e-5);
+  const rows = weightsToRows([
+    { as_of_date: "2026-10-07", weights: [{ name: "a", weight: 0.21079 }, { name: "b", weight: 0.789211 }] },
+  ]);
+  assert.equal(rows[0]?.a, 0.21079);
 });
