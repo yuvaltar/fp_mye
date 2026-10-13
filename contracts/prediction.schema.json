@@ -6,7 +6,10 @@
   "x-endpoints": {
     "GET /predict?ticker=XXX": { "200": "#/$defs/Prediction", "404": "#/$defs/Error" },
     "GET /tickers": { "200": "#/$defs/TickersResponse" },
-    "GET /history?ticker=XXX": { "200": "#/$defs/HistoryResponse", "404": "#/$defs/Error" }
+    "GET /history?ticker=XXX": { "200": "#/$defs/HistoryResponse", "404": "#/$defs/Error" },
+    "GET /overview": { "200": "#/$defs/OverviewResponse" },
+    "GET /weights?ticker=XXX": { "200": "#/$defs/WeightsHistoryResponse", "404": "#/$defs/Error" },
+    "GET /performance": { "200": "#/$defs/PerformanceResponse" }
   },
   "$ref": "#/$defs/Prediction",
   "$defs": {
@@ -91,8 +94,13 @@
           "type": "string",
           "minLength": 1,
           "description": "Version of the engine that produced the prediction, e.g. 0.1.0."
-        }
+        },
+        "earnings_date": { "$ref": "#/$defs/EarningsDate" }
       }
+    },
+    "EarningsDate": {
+      "anyOf": [{ "type": "string", "format": "date" }, { "type": "null" }],
+      "description": "Date of the company's quarterly earnings report when it falls in the 5 trading days the prediction covers (YYYY-MM-DD), otherwise null. Optional: absent means the engine does not report it. It explains why a prediction jumps in that week."
     },
     "TickersResponse": {
       "type": "object",
@@ -107,7 +115,12 @@
             "required": ["ticker", "name"],
             "properties": {
               "ticker": { "$ref": "#/$defs/Ticker" },
-              "name": { "type": "string", "minLength": 1, "description": "Company name for display." }
+              "name": { "type": "string", "minLength": 1, "description": "Company name for display." },
+              "sector": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Optional GICS sector, e.g. Information Technology. The website shows a sector filter when sectors are present."
+              }
             }
           }
         }
@@ -138,6 +151,172 @@
           "type": "array",
           "description": "Past predictions, oldest first, one per as_of_date.",
           "items": { "$ref": "#/$defs/HistoryPoint" }
+        }
+      }
+    },
+    "OverviewEntry": {
+      "type": "object",
+      "description": "The few numbers the watchlist needs for one ticker, so a list of about 50 tickers takes one request instead of two per ticker.",
+      "additionalProperties": false,
+      "required": [
+        "ticker",
+        "as_of_date",
+        "predicted_vol",
+        "baseline_vol",
+        "supervisor_confidence",
+        "latest_realized_vol"
+      ],
+      "properties": {
+        "ticker": { "$ref": "#/$defs/Ticker" },
+        "as_of_date": { "type": "string", "format": "date" },
+        "predicted_vol": { "$ref": "#/$defs/Volatility" },
+        "baseline_vol": { "$ref": "#/$defs/Volatility" },
+        "supervisor_confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "latest_realized_vol": {
+          "anyOf": [{ "$ref": "#/$defs/Volatility" }, { "type": "null" }],
+          "description": "The latest realized_vol that is not null in that ticker's /history, or null. The website compares the prediction with it to show the volatility trend."
+        },
+        "earnings_date": { "$ref": "#/$defs/EarningsDate" }
+      }
+    },
+    "OverviewResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entries"],
+      "properties": {
+        "entries": {
+          "type": "array",
+          "description": "One entry per ticker that has a prediction; a ticker without one is simply absent.",
+          "items": { "$ref": "#/$defs/OverviewEntry" }
+        }
+      }
+    },
+    "SkillRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "horizon"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "horizon": { "enum": ["short", "medium", "long"] }
+      }
+    },
+    "WeightsPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["as_of_date", "weights"],
+      "properties": {
+        "as_of_date": { "type": "string", "format": "date" },
+        "weights": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Weight of every skill on that date. They sum to 1.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "weight"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "weight": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "WeightsHistoryResponse": {
+      "type": "object",
+      "description": "How the supervisor's weights moved over time. Same dates as /history (oldest first); the last point equals the weights in /predict.",
+      "additionalProperties": false,
+      "required": ["ticker", "skills", "points"],
+      "properties": {
+        "ticker": { "$ref": "#/$defs/Ticker" },
+        "skills": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SkillRef" } },
+        "points": { "type": "array", "items": { "$ref": "#/$defs/WeightsPoint" } }
+      }
+    },
+    "ModelPerformance": {
+      "type": "object",
+      "description": "Backtest scores of one model. The *_vs_har_rv fields are the improvement over the HAR-RV baseline as a decimal (0.109 means 10.9% lower error), null on the baseline's own row.",
+      "additionalProperties": false,
+      "required": ["name", "kind", "rmse", "mae", "qlike", "rmse_vs_har_rv", "mae_vs_har_rv", "qlike_vs_har_rv"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "kind": { "enum": ["supervisor", "skill", "baseline"] },
+        "rmse": { "type": "number", "minimum": 0 },
+        "mae": { "type": "number", "minimum": 0 },
+        "qlike": { "type": "number", "minimum": 0 },
+        "rmse_vs_har_rv": { "type": ["number", "null"] },
+        "mae_vs_har_rv": { "type": ["number", "null"] },
+        "qlike_vs_har_rv": { "type": ["number", "null"] }
+      }
+    },
+    "PerformanceResponse": {
+      "type": "object",
+      "description": "Summary of the walk-forward backtest, the same numbers as docs/backtest.md. QLIKE is the headline metric.",
+      "additionalProperties": false,
+      "required": [
+        "generated_at",
+        "model_version",
+        "period_start",
+        "period_end",
+        "evaluation_dates",
+        "scored_predictions",
+        "tickers",
+        "headline",
+        "models",
+        "skill_weights",
+        "per_ticker"
+      ],
+      "properties": {
+        "generated_at": { "type": "string", "format": "date" },
+        "model_version": { "type": "string", "minLength": 1 },
+        "period_start": { "type": "string", "format": "date" },
+        "period_end": { "type": "string", "format": "date" },
+        "evaluation_dates": { "type": "integer", "minimum": 1 },
+        "scored_predictions": { "type": "integer", "minimum": 1 },
+        "tickers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Ticker" } },
+        "headline": {
+          "type": "object",
+          "description": "The one-line result: the supervisor against HAR-RV on QLIKE.",
+          "additionalProperties": false,
+          "required": ["metric", "supervisor", "baseline", "improvement", "tickers_better", "tickers_total", "t_statistic"],
+          "properties": {
+            "metric": { "const": "qlike" },
+            "supervisor": { "type": "number", "minimum": 0 },
+            "baseline": { "type": "number", "minimum": 0 },
+            "improvement": { "type": "number", "description": "1 - supervisor / baseline, a decimal." },
+            "tickers_better": { "type": "integer", "minimum": 0 },
+            "tickers_total": { "type": "integer", "minimum": 1 },
+            "t_statistic": { "type": "number", "description": "Corrected for overlapping evaluation dates; about 2 or more is the usual bar." }
+          }
+        },
+        "models": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ModelPerformance" } },
+        "skill_weights": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "horizon", "mean", "min", "max"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "horizon": { "enum": ["short", "medium", "long"] },
+              "mean": { "type": "number", "minimum": 0, "maximum": 1 },
+              "min": { "type": "number", "minimum": 0, "maximum": 1 },
+              "max": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "per_ticker": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ticker", "supervisor_qlike", "baseline_qlike"],
+            "properties": {
+              "ticker": { "$ref": "#/$defs/Ticker" },
+              "supervisor_qlike": { "type": "number", "minimum": 0 },
+              "baseline_qlike": { "type": "number", "minimum": 0 }
+            }
+          }
         }
       }
     },

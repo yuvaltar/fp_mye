@@ -32,7 +32,8 @@
       }
     ],
     "supervisor_confidence": 0.74,
-    "model_version": "0.1.0-mock"
+    "model_version": "0.1.0-mock",
+    "earnings_date": null
   },
   {
     "ticker": "TEVA",
@@ -67,7 +68,8 @@
       }
     ],
     "supervisor_confidence": 0.58,
-    "model_version": "0.1.0-mock"
+    "model_version": "0.1.0-mock",
+    "earnings_date": "2026-10-13"
   },
   {
     "ticker": "NVDA",
@@ -102,6 +104,7 @@
       }
     ],
     "supervisor_confidence": 0.66,
-    "model_version": "0.1.0-mock"
+    "model_version": "0.1.0-mock",
+    "earnings_date": null
   }
 ]

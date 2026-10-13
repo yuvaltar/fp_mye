@@ -44,3 +44,28 @@ def test_mock_history(history):
 def test_schema_rejects_bad_prediction():
     bad = {**load("mock_prediction.json")[0], "horizon_days": 10}
     assert not validator("Prediction").is_valid(bad)
+
+
+def test_mock_tickers_have_sectors():
+    assert all(t.get("sector") for t in load("mock_tickers.json")["tickers"])
+
+
+def test_mock_overview():
+    validator("OverviewResponse").validate(load("mock_overview.json"))
+
+
+@pytest.mark.parametrize("weights", load("mock_weights.json"), ids=lambda w: w["ticker"])
+def test_mock_weights(weights):
+    validator("WeightsHistoryResponse").validate(weights)
+    for point in weights["points"]:
+        assert sum(w["weight"] for w in point["weights"]) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_mock_performance():
+    validator("PerformanceResponse").validate(load("mock_performance.json"))
+
+
+def test_schema_rejects_an_unknown_model_kind():
+    bad = load("mock_performance.json")
+    bad["models"][0] = {**bad["models"][0], "kind": "oracle"}
+    assert not validator("PerformanceResponse").is_valid(bad)
