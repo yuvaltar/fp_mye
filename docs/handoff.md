@@ -11,11 +11,12 @@ Written for a new Claude Code session that continues Yuval's work on the engine.
 3. **Central weakness:** the supervisor is tied with a plain equal-weight average (0.4961 vs 0.4962) and loses to the single skill `weak_signals` (0.4885). Dynamic weighting does not currently earn its complexity.
 4. We wrote our own PyTorch iTransformer (`tsm/models/itransformer.py`) plus an experiment runner (`python -m tsm.experiment`) that scores candidates without re-running the committee.
 5. **Best candidate:** `itransformer_path_feats` (5-step path head + 4 input channels), QLIKE 0.4948 (mean of 3 seeds). It beats the supervisor and every committee member except `weak_signals`. **It is not in the committee**; promoting it is an open decision for the user.
-6. Branch `algo-yuval` is at `a4e2654` (Step 9); `origin/algo-yuval` is at `50359e7` (Steps 8 and 9 not pushed). None of this is **merged into `algo`**, and nothing from the engine or the site is on `main` yet.
+6. Branch `algo-yuval` is at `979df92` (Step 10); `origin/algo-yuval` is at `50359e7` (Steps 8-10 and the handoff commit not pushed). None of this is **merged into `algo`**, and nothing from the engine or the site is on `main` yet.
 7. **Deadline (updated 2026-10-12): the real deadline is about 1.5 weeks away, around 2026-10-22**, not the 2026-10-14 freeze written in `docs/plan.md`. The day-by-day table in the plan still describes the original 7 days.
 8. Maor has a full website on branch `web-initial-site` and has sent the algo team a **contract-change proposal that is not yet agreed** (section 9).
-9. `pytest` in `algo/`: **145 passed** after Step 9 (2026-10-12).
+9. `pytest` in `algo/`: **166 passed** after Step 10 (2026-10-13).
 11. **Steps 8–9 (market map, graph iTransformer): the graph adds nothing measurable** over path_feats; see the end of section 6.
+12. **Step 10:** `pair_2019` (0.2·path_feats + 0.8·weak_signals) wins on 2019 and edges weak_signals on test (0.4864 vs 0.4885); two more input channels (gap, VIX) made path_feats worse.
 10. Working tree clean. No uncommitted work.
 
 ---
@@ -44,7 +45,7 @@ GitHub repo: `https://github.com/yuvaltar/fp_mye`. The `gh` CLI is **not install
 | --- | --- | --- |
 | `main` | `238a1db` | Repo foundations only (PR #1). No engine, no site. |
 | `algo` | `83e81e6` | Elie's engine + Yuval's calibration step (PR #2 merged `algo-yuval` up to `a0b8f3e`). 10 tickers. |
-| **`algo-yuval`** | **`a4e2654`** local, `50359e7` on GitHub | `algo` + 4 commits: 52 tickers, own iTransformer + experiment runner, path head, 4 channels. **No PR yet** (none visible from here; check GitHub). |
+| **`algo-yuval`** | **`979df92`** local, `50359e7` on GitHub | `algo` + 4 commits: 52 tickers, own iTransformer + experiment runner, path head, 4 channels. **No PR yet** (none visible from here; check GitHub). |
 | `algo-elie` | `0cc9ded` | Elie's original engine commit; nothing newer pushed. |
 | `web` | `238a1db` | Untouched. |
 | `web-initial-site` | `924d41f` (2026-10-12) | Maor's site: watchlist, stock page, performance, about, optional live Yahoo market data, 107 `node:test` tests. Not merged anywhere. |
@@ -61,6 +62,8 @@ Yuval's commits, oldest first:
 | `50359e7` | Team change, doc refresh, frozen prices for experiments | 7 |
 | `92e72c3` | Add the market map: correlation and sector adjacency with leakage tests | 8 (not pushed) |
 | `a4e2654` | Feed the market map into the iTransformer: no gain over path_feats | 9 (not pushed) |
+| `c909b6b` | Update the handoff after Steps 8 and 9 | docs (not pushed) |
+| `979df92` | Combine path_feats with weak_signals; two more channels make it worse | 10 (not pushed) |
 
 Each commit message has a long body with the rationale, the results and the verification. `git show <hash>` is the most detailed record of each step.
 
@@ -172,6 +175,9 @@ Installed Python 3.12.10, created the venv, ran 57 tests (all passed), and ran a
 ### Step 9: the map inside the iTransformer (`a4e2654`), a negative result
 Six candidates `itransformer_graph_{gnn,bias}_{corr,sector,shuffled}` on top of path_feats: `gnn` adds `g * A @ Linear(h)` after the embedding, `bias` adds `lambda_h * S` to attention logits; gates start at 0 and train at lr 0.02. The experiment table gained "QLIKE 2019" (validation year; choices are made on it) and "Gate" columns. **Bug found:** PyTorch's fast inference kernel mishandles additive attention masks; the bias layers switch it off (test: train vs predict paths must match). Results (3 seeds): path_feats 0.4948 test / 0.4964 2019; gnn_corr 0.4950 / 0.4961 (g ≈ 0.02); bias_corr 0.4949 / 0.4971 (|lambda| ≈ 0.5); gnn_sector 0.4950 / 0.4961; **gnn_shuffled (wrong links) 0.4947 / 0.4961**. The map adds nothing; weak_signals (0.4885 / 0.4586) is still best.
 
+### Step 10: ensembles and two more channels (`979df92`)
+`python -m tsm.ensemble` combines saved predictions with no training (components calibrated, mixed, calibrated again). It reads `algo/experiments/itransformer_path_feats_seed{0,1,2}.csv`, so those git-ignored files matter: regenerate them one after another if they are ever lost. Results (test / 2019): weak_signals 0.4885 / 0.4586; pair_equal 0.4809 / 0.4583; **pair_2019 (w = 0.2) 0.4864 / 0.4531, the 2019 winner** (its 2019 score is optimistic, w was chosen on 2019); committee_v2 0.4990 / 0.4546. Calibrating twice costs about 0.01 on test (weak_signals twice: 0.4984). `itransformer_path_feats6` (path_feats + overnight gap + log VIX) is worse: 0.4993 / 0.5080, seed spread 0.0178. ^VIX is frozen in the cache (`python -m tsm.experiment --freeze-vix`) and reaches frames as a `vix` column. `--jobs` (parallel runs) was tried and removed: splitting torch threads changed seed 0 from 0.4924 to 0.4925, so **experiments always run one after another**.
+
 ## 7. Scoreboard (one table)
 
 QLIKE from 2020-01-02 to 2026-09-30, 52 tickers, 88,140 predictions on 1,695 dates, all models calibrated, lower is better.
@@ -190,6 +196,9 @@ QLIKE from 2020-01-02 to 2026-09-30, 52 tickers, 88,140 predictions on 1,695 dat
 | `itransformer_qlike` | 0.5856 | −7.3% | no |
 | Naive (last 5-day vol) | 1.2482 | −128.6% | baseline |
 | Graph candidates (Step 9, 6 runs × 3 seeds) | 0.4947–0.4950 | +9.3% to +9.4% | no: equal to path_feats within seed spread |
+| `pair_equal` (Step 10, mean of 3) | 0.4809 | +11.9% | no (combination; not the 2019 winner) |
+| `pair_2019` (Step 10, w = 0.2, mean of 3) | 0.4864 | +10.9% | no (combination; 2019 winner) |
+| `itransformer_path_feats6` (mean of 3) | 0.4993 | +8.5% | no |
 
 Supervisor RMSE 0.1730 / MAE 0.1165; equal-weight is slightly better on RMSE (0.1727).
 
@@ -262,7 +271,7 @@ Supervisor RMSE 0.1730 / MAE 0.1165; equal-weight is slightly better on RMSE (0.
 - **Experiment protocol:** the committee stays unchanged, the leakage tests are only extended (never weakened), every new variant goes into both leakage tests, seeds 0/1/2 with mean and spread, and md5 checks that `artifacts/` and `backtest.md` did not change.
 - Wants honest reports, bad news included (e.g. "QLIKE loss did not help" went into the commit subject). At the end of a task: the results table, the runtime, and what is uncommitted. Offering optional follow-ups ("say the word and I'll…") works well.
 - During long runs Yuval asks for status: show the tail of the log, do not stop the job, start nothing new.
-- Test status after Step 9 (2026-10-12): **145 passed** in 194 s (`algo/.venv/Scripts/python.exe -m pytest -q`).
+- Test status after Step 10 (2026-10-13): **166 passed** in 201 s (`algo/.venv/Scripts/python.exe -m pytest -q`).
 
 ---
 
