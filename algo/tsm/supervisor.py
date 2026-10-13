@@ -13,15 +13,19 @@ import pandas as pd
 
 from tsm.config import HORIZON_DAYS
 from tsm.skills.base import TemporalSkill
-from tsm.skills.multivariate import MultivariateSkill
+from tsm.skills.itransformer import ITransformerCommitteeSkill
 from tsm.skills.regime import RegimeSkill
 from tsm.skills.short_term import ShortTermSkill
 from tsm.skills.weak_signals import WeakSignalsSkill
 
 
 def build_skills() -> list[TemporalSkill]:
-    """The skill registry: every skill listed here takes part in the market."""
-    return [ShortTermSkill(), RegimeSkill(), WeakSignalsSkill(), MultivariateSkill()]
+    """The skill registry: every skill listed here takes part in the market.
+
+    ``itransformer`` replaced ``multivariate`` (neuralforecast) in Step 11; that
+    module is kept, outside the registry, so older results stay reproducible.
+    """
+    return [ShortTermSkill(), RegimeSkill(), WeakSignalsSkill(), ITransformerCommitteeSkill()]
 
 
 def qlike(realized_vol, predicted_vol):

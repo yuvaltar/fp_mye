@@ -5,6 +5,7 @@ import pytest
 
 from tsm.data import truncate_panel
 from tsm.models.itransformer import ITransformerSkill
+from tsm.skills.itransformer import ITransformerCommitteeSkill
 from tsm.skills.multivariate import MultivariateSkill
 from tsm.skills.regime import RegimeSkill
 from tsm.skills.short_term import ShortTermSkill
@@ -20,13 +21,17 @@ SKILLS = {
     "short_term": ShortTermSkill,
     "regime": RegimeSkill,
     "weak_signals": WeakSignalsSkill,
-    # A tiny network keeps the test fast; the architecture is the same.
-    "multivariate": lambda: MultivariateSkill(input_size=20, hidden_size=8, max_steps=5),
+    # A tiny network keeps the test fast; the architecture and the three seeds are the same.
+    "itransformer": lambda: ITransformerCommitteeSkill(
+        input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5
+    ),
 }
 
 # Experiment skills: they must pass every check below, but they are not in the
 # committee, so the registry test above stays on SKILLS alone.
 CANDIDATES = {
+    # Retired from the committee in Step 11, kept so older results stay reproducible.
+    "multivariate": lambda: MultivariateSkill(input_size=20, hidden_size=8, max_steps=5),
     "itransformer_mae": lambda: ITransformerSkill(
         loss="mae", input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5
     ),

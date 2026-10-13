@@ -104,3 +104,14 @@ def test_main_refuses_runs_that_do_not_cover_the_committee(tmp_path, monkeypatch
     monkeypatch.setattr(experiment, "EXPERIMENTS_DIR", tmp_path)
     with pytest.raises(ValueError, match="cover"):
         ensemble.main([])
+
+
+def test_committee_v2_drops_whichever_itransformer_the_committee_has(frame):
+    """Before Step 11 the slot is multivariate, since then our own itransformer: same four models."""
+    new_committee = ["short_term", "regime", "weak_signals", "itransformer"]
+    renamed = frame.rename(columns={"pred_multivariate": "pred_itransformer"})
+    before = ensemble.build(frame, COMMITTEE, SEEDS)["pred_committee_v2_seed0"]
+    after = ensemble.build(renamed, new_committee, SEEDS)["pred_committee_v2_seed0"]
+    np.testing.assert_allclose(after, before)
+    with pytest.raises(ValueError, match="exactly one"):
+        ensemble.replaced_member(["short_term", "regime", "weak_signals"])

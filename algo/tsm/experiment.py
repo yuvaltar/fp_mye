@@ -61,6 +61,7 @@ DESCRIPTIONS = {
     "regime": "GARCH(1,1) on daily returns",
     "weak_signals": "Gradient boosting on volume, range, gap and SPY-correlation features",
     "multivariate": "neuralforecast iTransformer, MAE on log-volatility",
+    "itransformer": "Committee skill since Step 11: itransformer_path_feats averaged over seeds 0, 1, 2",
     "itransformer_mae": "Own PyTorch iTransformer, MAE on log-volatility",
     "itransformer_qlike": "Own PyTorch iTransformer, QLIKE on log-volatility",
     "itransformer_mae_path": "Own PyTorch iTransformer, 5-step path head, MAE over the 5 steps",
@@ -74,7 +75,8 @@ DESCRIPTIONS = {
     "itransformer_graph_bias_sector": "path_feats + attention bias lambda·S per head and layer, sector map",
     "itransformer_graph_bias_shuffled": "path_feats + attention bias lambda·S per head and layer, shuffled correlation map (control)",
 }
-SEED_MODELS = ["short_term", "regime", "weak_signals", "multivariate"]
+# The committee rows a new experiments.md starts with (the committee since Step 11).
+SEED_MODELS = ["short_term", "regime", "weak_signals", "itransformer"]
 LABELS = {"short_term": "HAR-RV (short_term)"}
 
 HEADER = """# Experiments

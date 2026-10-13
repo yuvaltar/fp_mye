@@ -5,6 +5,7 @@ import pytest
 
 from tsm import backtest
 from tsm.models.itransformer import ITransformerSkill
+from tsm.skills.itransformer import ITransformerCommitteeSkill
 from tsm.skills.base import TemporalSkill
 from tsm.skills.multivariate import MultivariateSkill
 from tsm.skills.regime import RegimeSkill
@@ -33,6 +34,7 @@ def fast_skills():
         ShortTermSkill(),
         RegimeSkill(),
         WeakSignalsSkill(),
+        ITransformerCommitteeSkill(input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5),
         MultivariateSkill(input_size=20, hidden_size=8, max_steps=5),
         ITransformerSkill(loss="mae", input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5),
         ITransformerSkill(loss="qlike", input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5),

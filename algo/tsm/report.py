@@ -289,7 +289,7 @@ Per ticker (mean weight of each skill, and QLIKE of the supervisor against HAR-R
 - Consecutive evaluation dates share 4 of their 5 target days, so the {len(rows)} scored predictions are far from independent. The t-statistic above corrects for this; the raw count overstates the evidence.
 - "Realized volatility" here comes from 5 daily closing prices, which is itself a noisy measure of true volatility. Part of every model's error is noise in the target.
 - The supervisor's window and temperature were chosen once, on predictions from before {meta['test_start']}, and not touched afterwards. The skills' own settings (network size, tree depth, feature windows) were fixed by hand and not tuned.
-- The iTransformer is deliberately small (hidden size 64, 300 training steps, retrained every 125 trading days) to keep the run short on CPU. A larger network might do better or worse; this was not explored.
+- The skill `itransformer` (our own PyTorch iTransformer, the mean of three seeds) is deliberately small (hidden size 64, 300 training steps, retrained every 125 trading days) to keep the run short on CPU. A larger network might do better or worse; this was not explored. The seeds are averaged because a single seed moved its test QLIKE by up to 0.005 in `docs/experiments.md`.
 - Every skill is rescaled each day by the calibration factor described above. The factor is itself estimated from {calibration_window} days of noisy outcomes, so it carries estimation error, and it is a single number per skill: it removes an average bias but cannot fix a skill whose bias varies with the level of volatility.
 - Prices are adjusted for splits and dividends as of the download date.
 """

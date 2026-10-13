@@ -11,7 +11,9 @@ fixed before looking at any result:
   from 0.0, 0.1, ..., 1.0 chosen on the mean 2019 QLIKE over the seeds (the
   validation year: the test period plays no part in the choice);
 - ``committee_v2``: the equal-weight mean of the committee with path_feats in
-  place of multivariate.
+  place of its iTransformer member (multivariate before Step 11, itransformer
+  since), so it is short_term, regime, weak_signals and one path_feats seed
+  with either committee.
 
 Every component is calibrated first, a combination is the weighted mean of the
 calibrated predictions, and the combination is then calibrated again by the same
@@ -33,7 +35,9 @@ from tsm.experiment import append_rows, load_committee, score
 
 COMPONENT = "itransformer_path_feats"
 PARTNER = "weak_signals"
-REPLACED = "multivariate"
+# The committee's iTransformer slot, which committee_v2 fills with a single path_feats seed:
+# multivariate (neuralforecast) before Step 11, our own itransformer since.
+REPLACEABLE = ("itransformer", "multivariate")
 SEEDS = (0, 1, 2)
 WEIGHTS = tuple(round(0.1 * i, 1) for i in range(11))
 COMBINATIONS = ("pair_equal", "pair_2019", "committee_v2")
@@ -59,6 +63,14 @@ def load_component(seeds: list[int], experiments_dir=None) -> pd.DataFrame:
     return pd.concat(columns, axis=1).reset_index()
 
 
+def replaced_member(committee: list[str]) -> str:
+    """The committee's one iTransformer member, the one committee_v2 swaps for path_feats."""
+    present = [name for name in REPLACEABLE if name in committee]
+    if len(present) != 1:
+        raise ValueError(f"expected exactly one of {', '.join(REPLACEABLE)} in the committee, found {present}")
+    return present[0]
+
+
 def mix(calibrated: pd.DataFrame, weights: dict[str, float]) -> pd.Series:
     """Weighted sum of calibrated ``pred_*`` columns (the weights sum to 1)."""
     return sum(weight * calibrated[column] for column, weight in weights.items())
@@ -72,7 +84,8 @@ def build(frame: pd.DataFrame, committee: list[str], seeds: list[int]) -> pd.Dat
     ``pred_pair_w<w>_seed<s>`` per weight; pair_2019 is one of the last.
     """
     calibrated = calibrate(frame, committee + [component_name(s) for s in seeds])
-    members = [name for name in committee if name != REPLACED]
+    replaced = replaced_member(committee)
+    members = [name for name in committee if name != replaced]
     share = 1 / (len(members) + 1)
     added = {}
     for seed in seeds:
@@ -100,7 +113,7 @@ def choose_weight(table: pd.DataFrame, seeds: list[int]) -> tuple[float, pd.Data
     return float(scan["QLIKE_2019"].idxmin()), scan
 
 
-def descriptions(w: float) -> dict[str, str]:
+def descriptions(w: float, replaced: str) -> dict[str, str]:
     return {
         "pair_equal": "Mean of calibrated weak_signals and path_feats, calibrated again; no training (seed = path_feats seed)",
         "pair_2019": (
@@ -109,7 +122,7 @@ def descriptions(w: float) -> dict[str, str]:
         ),
         "committee_v2": (
             "Equal-weight mean of short_term, regime, weak_signals and path_feats (in place of "
-            "multivariate), calibrated again; no training"
+            f"{replaced}), calibrated again; no training"
         ),
     }
 
@@ -124,9 +137,10 @@ def main(argv: list[str] | None = None) -> None:
 
     started = time.time()
     committee, names = load_committee()
-    missing = [n for n in (PARTNER, REPLACED, "short_term") if n not in names]
+    missing = [n for n in (PARTNER, "short_term") if n not in names]
     if missing:
         raise ValueError(f"the saved committee has no {', '.join(missing)}; re-run python -m tsm.backtest")
+    replaced = replaced_member(names)
     frame = committee.merge(load_component(seeds), on=["date", "ticker"], how="inner", validate="one_to_one")
     if len(frame) != len(committee):
         raise ValueError(f"the saved {COMPONENT} runs cover {len(frame)} of {len(committee)} committee rows")
@@ -146,7 +160,7 @@ def main(argv: list[str] | None = None) -> None:
     for seed in seeds:
         table.loc[f"pair_2019_seed{seed}"] = table.loc[f"pair_w{w:.1f}_seed{seed}"]
     runs = [(f"{name}_seed{seed}", name, seed) for name in COMBINATIONS for seed in seeds]
-    print(append_rows(table, runs, {label: None for label, _, _ in runs}, seeds, descriptions(w)))
+    print(append_rows(table, runs, {label: None for label, _, _ in runs}, seeds, descriptions(w, replaced)))
     print(f"Wrote {experiment.EXPERIMENTS_FILE} in {round(time.time() - started)}s")
 
 
