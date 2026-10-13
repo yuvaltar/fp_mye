@@ -1,6 +1,6 @@
 # 7-day plan
 
-> **Note, 2026-10-12:** Elie has left the project. Yuval now owns all of `/algo` (the iTransformer, the ST-GNN market map and the API); Maor still owns `/web`. Where the plan below says "Elie + Yuval", read "Yuval".
+> **Note, 2026-10-12:** Elie has left the project. Yuval now owns all of `/algo` (the iTransformer, the ST-GNN market map and the API); Maor still owns `/web`. Where the plan below says "Elie + Yuval", read "Yuval". The real deadline is about 1.5 weeks away, around 2026-10-22, not 2026-10-14: the day-by-day dates below have slack, but their order still holds.
 
 Day 1 is Thursday 2026-10-08, the day the repository was set up; day 7 is Wednesday 2026-10-14. Shift the dates if the team starts later.
 
