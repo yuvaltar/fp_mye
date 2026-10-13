@@ -11,13 +11,14 @@ Written for a new Claude Code session that continues Yuval's work on the engine.
 3. **Central weakness:** the supervisor is still essentially tied with a plain equal-weight average (0.4862 vs 0.4869; retuned temperature 1.0 gives near-equal weights). The Step 11 gain came from the better member, not from the weighting.
 4. We wrote our own PyTorch iTransformer (`tsm/models/itransformer.py`) plus an experiment runner (`python -m tsm.experiment`) that scores candidates without re-running the committee.
 5. **`itransformer_path_feats` was promoted in Step 11** as the committee skill `itransformer` (seeds 0, 1, 2 averaged: 0.4888 on test, against 0.4948 for the average single seed).
-6. Branch `algo-yuval` is at `a7713b1` (Step 11); `origin/algo-yuval` is at `979df92` (the Step 10 handoff commit and Step 11 not pushed). None of this is **merged into `algo`**, and nothing from the engine or the site is on `main` yet.
+6. Branch `algo-yuval` is at `b77157a` (Step 12); `origin/algo-yuval` is at `979df92` (later commits not pushed). None of this is **merged into `algo`**, and nothing from the engine or the site is on `main` yet.
 7. **Deadline (updated 2026-10-12): the real deadline is about 1.5 weeks away, around 2026-10-22**, not the 2026-10-14 freeze written in `docs/plan.md`. The day-by-day table in the plan still describes the original 7 days.
 8. Maor has a full website on branch `web-initial-site` and has sent the algo team a **contract-change proposal that is not yet agreed** (section 9).
-9. `pytest` in `algo/`: **173 passed** after Step 11 (2026-10-13).
+9. `pytest` in `algo/`: **200 passed** after Step 12 (2026-10-13).
 11. **Steps 8–9 (market map, graph iTransformer): the graph adds nothing measurable** over path_feats; see the end of section 6.
 12. **Step 10:** `pair_2019` (0.2·path_feats + 0.8·weak_signals) wins on 2019 and edges weak_signals on test (0.4864 vs 0.4885); two more input channels (gap, VIX) made path_feats worse.
 13. **Step 11 (product change):** the API now returns the skill names `short_term`, `regime`, `weak_signals`, `itransformer`. Maor's site labels `multivariate` but shows `itransformer` through its fallback label: tell Maor (not a contract change).
+14. **Step 12:** earnings dates collected (Yahoo, checked against SEC); the earnings layer's jump variant takes the supervisor to 0.4263 on test (experiment, not in the product).
 10. Working tree clean. No uncommitted work.
 
 ---
@@ -187,6 +188,9 @@ Added with the `add-temporal-skill` procedure, then `backtest-report`, run as `p
 ### Step 12 part 1: earnings dates (data only)
 `tsm/earnings.py` collects quarterly earnings dates. **Yahoo (yfinance `get_earnings_dates`) is the source**: one date in each of the 47 quarters of 2015Q1-2026Q3 for all 51 companies, the time of day (before the open / after the close, verified: the predicted reaction day moves 0.0368 vs 0.0149 on the other day), and the next scheduled date. **SEC EDGAR (8-K item 2.02) is the check**: 99.6% agreement within one trading day where both have data, but it misses XOM entirely and early TEVA/AVGO/DIS/GOOGL, and adds non-earnings 2.02 filings (TSLA deliveries, ABBV/EOG updates). Saved in the git-ignored `algo/data/earnings/` (`python -m tsm.earnings`, `--refresh` to download again; needs `SEC_USER_AGENT` with a contact email, see `.env.example`). **Assumption: a release date is known at least 5 trading days ahead.**
 
+### Step 12 part 2: earnings layer (`b77157a`), experiment only
+`python -m tsm.earnings_layer` adds earnings information on top of the committee's saved raw predictions (no retraining) and rebuilds calibration, equal-weight and the retuned supervisor with the backtest's own steps. Earnings week = a reaction day in p+1..p+5 (7.8% of test forecasts). **Variant A (jump: + 252/5·J to the variance in earnings weeks) wins on 2019**: supervisor 0.4263 test / 0.4087 2019, against 0.4862 / 0.4662 now (+21.9% vs HAR-RV instead of +10.9%); in earnings weeks QLIKE drops from 1.18 to 0.54. Variant B (split calibration) 0.4320 / 0.4113. Placebo with reaction days shifted ±20 trading days: no gain (0.4880 / 0.4865), so the gain comes from the real dates. **Not in the product yet**: putting it there means the API's predictions depend on Yahoo earnings dates (assumed known 5 trading days ahead) and needs its own step (backtest, artifacts, report).
+
 ## 7. Scoreboard (one table)
 
 QLIKE from 2020-01-02 to 2026-09-30, 52 tickers, 88,140 predictions on 1,695 dates, all models calibrated, lower is better.
@@ -283,7 +287,7 @@ Supervisor RMSE 0.1730 / MAE 0.1165; equal-weight is slightly better on RMSE (0.
 - **Experiment protocol:** the committee stays unchanged, the leakage tests are only extended (never weakened), every new variant goes into both leakage tests, seeds 0/1/2 with mean and spread, and md5 checks that `artifacts/` and `backtest.md` did not change.
 - Wants honest reports, bad news included (e.g. "QLIKE loss did not help" went into the commit subject). At the end of a task: the results table, the runtime, and what is uncommitted. Offering optional follow-ups ("say the word and I'll…") works well.
 - During long runs Yuval asks for status: show the tail of the log, do not stop the job, start nothing new.
-- Test status after Step 11 (2026-10-13): **173 passed** in 207 s (`algo/.venv/Scripts/python.exe -m pytest -q`).
+- Test status after Step 12 (2026-10-13): **200 passed** in 227 s (`algo/.venv/Scripts/python.exe -m pytest -q`).
 
 ---
 
