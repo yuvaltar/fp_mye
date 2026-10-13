@@ -65,3 +65,26 @@ def corrupt_after(panel, position, seed=99):
         frame.iloc[position + 1:] = frame.iloc[position + 1:].to_numpy() * rng.uniform(0.2, 5.0, (n, 1))
         out[ticker] = frame
     return out
+
+
+def release_table(panel, rows):
+    """Synthetic earnings releases: ``rows`` are (ticker, panel row, timing) triples."""
+    days = next(iter(panel.values())).index
+    return pd.DataFrame([{"ticker": t, "date": days[r], "timing": timing} for t, r, timing in rows])
+
+
+def with_reaction_jumps(panel, release_rows, size=0.08):
+    """The panel with a log move of ``size`` on every reaction day, so the earnings jump J is positive."""
+    from tsm.earnings_jump import reaction_positions, trading_calendar
+
+    reactions = reaction_positions(release_rows, trading_calendar(next(iter(panel.values())).index))
+    out = {}
+    for ticker, frame in panel.items():
+        shift = np.zeros(len(frame))
+        days = reactions.get(ticker, np.empty(0, dtype=int))
+        shift[days[days < len(frame)]] = size
+        factor = np.exp(np.cumsum(shift))[:, None]
+        frame = frame.copy()
+        frame[["open", "high", "low", "close"]] = frame[["open", "high", "low", "close"]].to_numpy() * factor
+        out[ticker] = frame
+    return out

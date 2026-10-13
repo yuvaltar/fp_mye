@@ -22,16 +22,62 @@ LABELS = {
 }
 
 
+# Columns that describe a row rather than predict it, and are empty on purpose for most rows
+# (reaction_date only exists in earnings weeks): a missing value there must not drop the row.
+DESCRIPTIVE_COLUMNS = ("reaction_date",)
+
+# The validation year: the last full year before the test period (backtest.TEST_START).
+VALIDATION_START, VALIDATION_END = "2019-01-01", "2020-01-01"
+
+
+def _complete(rows: pd.DataFrame) -> pd.DataFrame:
+    return rows.dropna(subset=[c for c in rows.columns if c not in DESCRIPTIVE_COLUMNS])
+
+
 def scored_rows(frame: pd.DataFrame, test_start: str) -> pd.DataFrame:
     """Test-period rows whose outcome is known. Every model is scored on exactly these."""
     rows = frame[(frame["date"] >= pd.Timestamp(test_start)) & frame["realized_vol"].notna()]
-    return rows.dropna()
+    return _complete(rows)
 
 
-def model_columns(skill_names: list[str]) -> dict[str, str]:
-    """Report row -> column of the frame, in display order."""
+def validation_rows(frame: pd.DataFrame, start: str = VALIDATION_START, end: str = VALIDATION_END) -> pd.DataFrame:
+    """Rows of the validation year whose outcome is known, picked the way ``scored_rows`` picks the test rows."""
+    rows = frame[
+        (frame["date"] >= pd.Timestamp(start)) & (frame["date"] < pd.Timestamp(end)) & frame["realized_vol"].notna()
+    ]
+    return _complete(rows)
+
+
+def week_scores(frame: pd.DataFrame, columns: dict[str, str], test_start: str = VALIDATION_END) -> pd.DataFrame:
+    """QLIKE per model: test, 2019, and test split into earnings weeks and ordinary weeks.
+
+    ``frame`` needs an ``earnings_week`` column; ``columns`` maps model -> column.
+    """
+    test, val = scored_rows(frame, test_start), validation_rows(frame, end=test_start)
+    week = test["earnings_week"].astype(bool)
+    table = {}
+    for model, column in columns.items():
+        loss = qlike(test["realized_vol"], test[column])
+        table[model] = {
+            "QLIKE": loss.mean(),
+            "QLIKE_2019": qlike(val["realized_vol"], val[column]).mean(),
+            "QLIKE_earnings": loss[week].mean(),
+            "QLIKE_ordinary": loss[~week].mean(),
+        }
+    out = pd.DataFrame(table).T
+    out.attrs["earnings_share"] = float(week.mean())
+    return out
+
+
+def model_columns(skill_names: list[str], plain_baseline: bool = False) -> dict[str, str]:
+    """Report row -> column of the frame, in display order.
+
+    Without the earnings layer the baseline is the skill ``short_term`` itself,
+    so that skill gets no row of its own; with it (``plain_baseline``) the skill
+    carries the earnings jump and the baseline does not, so both are shown.
+    """
     columns = {"supervisor": "supervisor", "baseline": "baseline"}
-    columns.update({s: f"pred_{s}" for s in skill_names if f"pred_{s}" != "pred_short_term"})
+    columns.update({s: f"pred_{s}" for s in skill_names if plain_baseline or f"pred_{s}" != "pred_short_term"})
     columns.update({"naive": "naive", "equal_weight": "equal_weight"})
     return columns
 
@@ -147,12 +193,62 @@ def _charts(rows: pd.DataFrame, table: pd.DataFrame, skill_names: list[str], ass
     plt.close(fig)
 
 
-def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR) -> pd.DataFrame:
-    """Write docs/backtest.md, results.csv, weights.csv and the charts. Returns the metrics table."""
+def earnings_section(earnings: dict, skill_names: list[str]) -> str:
+    """The "Earnings layer" section: before/after by kind of week, the placebo, the assumption."""
+    before, after = earnings["before"], earnings["after"]
+    names = {"supervisor": "Supervisor", "equal_weight": "Equal-weight", "baseline": "HAR-RV baseline (plain)"}
+    lines = [
+        "| Model | QLIKE without | QLIKE with | Earnings weeks without | Earnings weeks with "
+        "| Ordinary weeks without | Ordinary weeks with |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for model in ("supervisor", "equal_weight", *skill_names, "baseline"):
+        b, a = before.loc[model], after.loc[model]
+        lines.append(
+            f"| {names.get(model, f'Skill `{model}`')} | {b['QLIKE']:.4f} | {a['QLIKE']:.4f} | "
+            f"{b['QLIKE_earnings']:.4f} | {a['QLIKE_earnings']:.4f} | {b['QLIKE_ordinary']:.4f} | {a['QLIKE_ordinary']:.4f} |"
+        )
+    placebo = ", ".join(
+        f"{q:.4f} with the dates {abs(s)} trading days {'later' if s > 0 else 'earlier'}"
+        for s, q in earnings["placebo"].items()
+    )
+    return f"""## Earnings layer
+
+In an earnings week (a forecast whose next 5 trading days contain an earnings reaction day) every skill's
+predicted variance gets one expected earnings move before calibration: `vol = sqrt(vol^2 + 252/5 * J)`, with
+`J` the ticker's average excess squared return on its past reaction days (only those already known on the
+forecast day), shrunk toward the average over all tickers. The HAR-RV baseline stays plain HAR-RV, calibrated,
+without the jump, so every "vs HAR-RV" number stays comparable with earlier reports.
+
+**Assumption:** release dates, and whether they come before the open or after the close, are known at least 5
+trading days ahead (companies announce them weeks ahead). They come from Yahoo Finance and were checked against
+SEC filings (`tsm/earnings.py`).
+
+Earnings weeks are {after.attrs['earnings_share']:.1%} of the scored forecasts. QLIKE without and with the layer
+(the same weeks, the same skills, the supervisor retuned each time):
+
+{chr(10).join(lines)}
+
+**Placebo:** with every reaction day moved by 20 trading days, the supervisor scores {placebo}, against
+{before.loc['supervisor', 'QLIKE']:.4f} without the layer and {after.loc['supervisor', 'QLIKE']:.4f} with it. The gain
+comes from the real earnings dates, not from the mechanism.
+"""
+
+
+def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR, earnings: dict | None = None) -> pd.DataFrame:
+    """Write docs/backtest.md, results.csv, weights.csv and the charts. Returns the metrics table.
+
+    ``earnings`` is the before/after comparison of the earnings layer (``backtest.earnings_comparison``);
+    with it the report gains an "Earnings layer" section.
+    """
     assets = docs_dir / "backtest_assets"
     assets.mkdir(parents=True, exist_ok=True)
     skill_names = [s["name"] for s in meta["skills"]]
-    columns = model_columns(skill_names)
+    with_earnings = bool(meta.get("earnings", {}).get("enabled"))
+    columns = model_columns(skill_names, plain_baseline=with_earnings)
+    labels = dict(LABELS)
+    if with_earnings:
+        labels["baseline"] = "HAR-RV baseline (plain `short_term`, no earnings jump)"
     rows = scored_rows(frame, meta["test_start"])
     table = metrics_table(rows, columns)
     tstat = loss_difference_tstat(rows)
@@ -220,6 +316,23 @@ def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR) -> pd.DataF
     calibration_window = meta["calibration_window"]
     n_skills = len(skill_names)
     n_tickers = rows["ticker"].nunique()
+    if with_earnings:
+        baseline_note = (
+            "The baseline is the skill `short_term` without the earnings jump; the `short_term` row has it."
+        )
+        calibration_note = (
+            " With the earnings layer on, \"QLIKE after\" includes the earnings jump as well as the calibration;"
+            " \"QLIKE before\" is each model's own prediction."
+        )
+        earnings_caveat = (
+            "\n- The earnings layer assumes release dates (and their time of day) are known 5 trading days ahead, and"
+            " takes them from Yahoo Finance, an unofficial source. A ticker with no scheduled date in the saved file"
+            " gets no earnings week in its latest forecasts."
+        )
+    else:
+        baseline_note = "The skill `short_term` is the HAR-RV model, so it and the baseline are one and the same row."
+        calibration_note = earnings_caveat = ""
+    earnings_text = "\n" + earnings_section(earnings, skill_names) if earnings is not None else ""
     text = f"""# Backtest report
 
 Generated by `python -m tsm.backtest`. Do not edit by hand.
@@ -241,9 +354,9 @@ Generated by `python -m tsm.backtest`. Do not edit by hand.
 
 Lower is better for all three metrics. The "vs HAR-RV" columns are the improvement over the baseline (positive = better than HAR-RV). Best value per column in bold.
 
-{_markdown_table(table, LABELS)}
+{_markdown_table(table, labels)}
 
-The skill `short_term` is the HAR-RV model, so it and the baseline are one and the same row.
+{baseline_note}
 
 ## Before vs after calibration
 
@@ -264,8 +377,8 @@ between calibrated models.
 
 {calibration}
 
-The equal-weight row has no single factor of its own; it averages the {n_skills} calibrated skills.
-
+The equal-weight row has no single factor of its own; it averages the {n_skills} calibrated skills.{calibration_note}
+{earnings_text}
 ## Average weight per skill
 
 {chr(10).join(weight_lines)}
@@ -291,7 +404,7 @@ Per ticker (mean weight of each skill, and QLIKE of the supervisor against HAR-R
 - The supervisor's window and temperature were chosen once, on predictions from before {meta['test_start']}, and not touched afterwards. The skills' own settings (network size, tree depth, feature windows) were fixed by hand and not tuned.
 - The skill `itransformer` (our own PyTorch iTransformer, the mean of three seeds) is deliberately small (hidden size 64, 300 training steps, retrained every 125 trading days) to keep the run short on CPU. A larger network might do better or worse; this was not explored. The seeds are averaged because a single seed moved its test QLIKE by up to 0.005 in `docs/experiments.md`.
 - Every skill is rescaled each day by the calibration factor described above. The factor is itself estimated from {calibration_window} days of noisy outcomes, so it carries estimation error, and it is a single number per skill: it removes an average bias but cannot fix a skill whose bias varies with the level of volatility.
-- Prices are adjusted for splits and dividends as of the download date.
+- Prices are adjusted for splits and dividends as of the download date.{earnings_caveat}
 """
     (docs_dir / "backtest.md").write_text(text, encoding="utf-8")
     return table
