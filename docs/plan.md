@@ -1,5 +1,7 @@
 # 7-day plan
 
+> **Note, 2026-10-12:** Elie has left the project. Yuval now owns all of `/algo` (the iTransformer, the ST-GNN market map and the API); Maor still owns `/web`. Where the plan below says "Elie + Yuval", read "Yuval".
+
 Day 1 is Thursday 2026-10-08, the day the repository was set up; day 7 is Wednesday 2026-10-14. Shift the dates if the team starts later.
 
 **Algo** = Elie + Yuval, in `/algo`, branch `algo`. **Web** = Maor, in `/web`, branch `web`.
