@@ -6,12 +6,20 @@ really happened. ``python -m tsm.backtest`` runs it on real data, saves the
 predictions the API serves, and writes the report. ``--cache-only`` runs it on
 the price cache as it is, without downloading, so its numbers stay comparable
 with docs/experiments.md (which is scored on that frozen cache).
+
+Since Step 13 the earnings layer is on (``tsm.earnings_jump``): between the
+skills and the calibration, a forecast whose next 5 trading days hold an
+earnings reaction gets one expected earnings move added to every skill's
+variance. ``raw_pred_<skill>`` stays each model's own prediction and the HAR-RV
+baseline stays plain HAR-RV. It needs the saved earnings dates
+(``python -m tsm.earnings``); ``--no-earnings`` runs the path from before it.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import time
+from collections.abc import Callable
 from itertools import product
 
 import numpy as np
@@ -19,6 +27,14 @@ import pandas as pd
 
 from tsm.config import ARTIFACTS_DIR, HORIZON_DAYS, MODEL_VERSION
 from tsm.data import Panel, load_panel, truncate_panel
+from tsm.earnings_jump import (
+    CALENDAR_EXTENSION,
+    add_earnings_jump,
+    load_releases,
+    reaction_positions,
+    trading_calendar,
+    without_next_release,
+)
 from tsm.skills.base import TemporalSkill
 from tsm.supervisor import Supervisor, build_skills, qlike
 from tsm.target import forward_realized_vol, realized_vol
@@ -128,11 +144,18 @@ def calibrate(
     return frame
 
 
-def add_targets_and_baselines(frame: pd.DataFrame, panel: Panel, skill_names: list[str]) -> pd.DataFrame:
+def add_targets_and_baselines(
+    frame: pd.DataFrame,
+    panel: Panel,
+    skill_names: list[str],
+    calibrator: Callable[[pd.DataFrame, list[str]], pd.DataFrame] = calibrate,
+) -> pd.DataFrame:
     """Add what really happened, calibrate the skills, then build the baselines.
 
     The HAR-RV baseline is ``pred_short_term`` after calibration, so it gets the
     same treatment as every other skill and the comparison stays fair.
+    ``calibrator`` is ``calibrate`` for the backtest; experiments (tsm.earnings_layer)
+    pass another rule and keep every other step exactly as here.
     """
     frame = frame.copy()
     realized, naive = [], []
@@ -142,7 +165,7 @@ def add_targets_and_baselines(frame: pd.DataFrame, panel: Panel, skill_names: li
         naive.append(pd.Series(realized_vol(close).to_numpy()[group["position"]], index=group.index))
     frame["realized_vol"] = pd.concat(realized)
     frame["naive"] = pd.concat(naive)
-    frame = calibrate(frame, skill_names)
+    frame = calibrator(frame, skill_names)
     frame["equal_weight"] = frame[[f"pred_{s}" for s in skill_names]].mean(axis=1)
     frame["baseline"] = frame[f"pred_{BASELINE_SKILL}"]
     return frame
@@ -174,12 +197,91 @@ def tune_supervisor(frame: pd.DataFrame, skill_names: list[str], before: str = T
     return best
 
 
-def run_pipeline(panel: Panel, skills: list[TemporalSkill], step: int = 1, verbose: bool = False):
-    """Full backtest: skills, baselines, tuned supervisor. Returns (frame, supervisor)."""
+def keep_own_predictions(frame: pd.DataFrame, skill_names: list[str]) -> pd.DataFrame:
+    """After the earnings jump and calibration: ``raw_pred_<skill>`` back to each model's own
+    prediction, and the HAR-RV baseline back to plain HAR-RV (its own prediction, calibrated by
+    the usual rule, without the jump), so "vs HAR-RV" stays comparable with every earlier result.
+    """
+    frame = frame.copy()
+    for name in skill_names:
+        frame[f"raw_pred_{name}"] = frame.pop(f"own_pred_{name}")
+    plain = calibrate(
+        frame[["position", "realized_vol", f"raw_pred_{BASELINE_SKILL}"]].rename(
+            columns={f"raw_pred_{BASELINE_SKILL}": f"pred_{BASELINE_SKILL}"}
+        ),
+        [BASELINE_SKILL],
+    )
+    frame["baseline"] = plain[f"pred_{BASELINE_SKILL}"]
+    return frame
+
+
+def finish_pipeline(
+    raw: pd.DataFrame,
+    panel: Panel,
+    skill_names: list[str],
+    reactions: dict[str, np.ndarray] | None = None,
+    tune_before: str = TEST_START,
+):
+    """Everything after the skills' raw predictions. Returns (frame, supervisor).
+
+    With ``reactions`` (earnings reaction days, ``tsm.earnings_jump``) the earnings
+    jump goes in before the calibration; without, this is the path from before Step 13.
+    """
+    frame = raw if reactions is None else add_earnings_jump(raw, panel, skill_names, reactions)
+    frame = add_targets_and_baselines(frame, panel, skill_names)
+    if reactions is not None:
+        frame = keep_own_predictions(frame, skill_names)
+    supervisor = tune_supervisor(frame, skill_names, before=tune_before)
+    return apply_supervisor(frame, supervisor, skill_names), supervisor
+
+
+def run_pipeline(
+    panel: Panel,
+    skills: list[TemporalSkill],
+    step: int = 1,
+    verbose: bool = False,
+    reactions: dict[str, np.ndarray] | None = None,
+):
+    """Full backtest: skills, (earnings jump), baselines, tuned supervisor. Returns (frame, supervisor)."""
     names = [s.name for s in skills]
-    frame = add_targets_and_baselines(run_skills(panel, skills, step=step, verbose=verbose), panel, names)
-    supervisor = tune_supervisor(frame, names)
-    return apply_supervisor(frame, supervisor, names), supervisor
+    return finish_pipeline(run_skills(panel, skills, step=step, verbose=verbose), panel, names, reactions)
+
+
+PLACEBO_SHIFT = 20  # trading days the placebo moves every reaction day
+
+
+def earnings_comparison(
+    raw: pd.DataFrame,
+    panel: Panel,
+    skill_names: list[str],
+    reactions: dict[str, np.ndarray],
+    frame: pd.DataFrame,
+    test_start: str = TEST_START,
+) -> dict:
+    """For the report: every model without and with the earnings layer, and the placebo.
+
+    The same raw predictions go through the path without the layer, and through
+    the layer with every reaction day moved by +-PLACEBO_SHIFT trading days.
+    Nothing is retrained; the supervisor is retuned each time.
+    """
+    from tsm.report import week_scores
+
+    columns = {"supervisor": "supervisor", "equal_weight": "equal_weight", "baseline": "baseline"}
+    columns |= {name: f"pred_{name}" for name in skill_names}
+    weeks = frame[["date", "ticker", "earnings_week"]]
+    before, _ = finish_pipeline(raw, panel, skill_names, tune_before=test_start)
+    before = before.merge(weeks, on=["date", "ticker"], validate="one_to_one")  # the same weeks, no jump
+    last = len(next(iter(panel.values()))) + CALENDAR_EXTENSION - 1
+    placebo = {}
+    for shift in (PLACEBO_SHIFT, -PLACEBO_SHIFT):
+        moved = {t: np.unique(np.clip(days + shift, 0, last)) for t, days in reactions.items()}
+        shifted, _ = finish_pipeline(raw, panel, skill_names, moved, tune_before=test_start)
+        placebo[shift] = float(week_scores(shifted, {"supervisor": "supervisor"}, test_start).loc["supervisor", "QLIKE"])
+    return {
+        "before": week_scores(before, columns, test_start),
+        "after": week_scores(frame, columns, test_start),
+        "placebo": placebo,
+    }
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -194,13 +296,39 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="use the price cache as it is and never download (the frozen prices of docs/experiments.md)",
     )
+    parser.add_argument(
+        "--no-earnings",
+        action="store_true",
+        help="leave out the earnings layer: the path from before Step 13, to reproduce older results",
+    )
     args = parser.parse_args(argv)
 
     started = time.time()
     panel = load_panel(cache_only=args.cache_only)
     skills = build_skills()
+    names = [s.name for s in skills]
+    reactions = None
+    if not args.no_earnings:
+        days = next(iter(panel.values())).index
+        releases = load_releases()
+        reactions = reaction_positions(releases, trading_calendar(days))
+        never = [t for t in panel if t not in set(releases["ticker"])]
+        no_next = [t for t in without_next_release(releases, list(panel), days[-1]) if t not in never]
+        if never:
+            print(f"No earnings dates at all for {', '.join(never)}: never an earnings week.", flush=True)
+        if no_next:
+            print(
+                f"No scheduled release after {days[-1].date()} for {', '.join(no_next)}: "
+                "their latest forecasts get no earnings week.",
+                flush=True,
+            )
     print(f"Walk-forward backtest on {len(panel)} tickers...", flush=True)
-    frame, supervisor = run_pipeline(panel, skills, verbose=True)
+    raw = run_skills(panel, skills, verbose=True)
+    frame, supervisor = finish_pipeline(raw, panel, names, reactions)
+    earnings = None
+    if reactions is not None:
+        print("Earnings layer: scoring without it, and with the dates moved (placebo)...", flush=True)
+        earnings = earnings_comparison(raw, panel, names, reactions, frame)
 
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     frame.to_csv(ARTIFACTS_DIR / "predictions.csv", index=False, float_format="%.6f")
@@ -212,10 +340,13 @@ def main(argv: list[str] | None = None) -> None:
         "calibration_window": CALIBRATION_WINDOW,
         "last_date": str(frame["date"].max().date()),
         "cache_only": args.cache_only,
+        "earnings": {"enabled": reactions is not None, "known_days_ahead": HORIZON_DAYS, "source": "Yahoo Finance"}
+        if reactions is not None
+        else {"enabled": False},
         "runtime_seconds": round(time.time() - started),
     }
     (ARTIFACTS_DIR / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
-    write_report(frame, meta)
+    write_report(frame, meta, earnings=earnings)
     print(f"Done in {meta['runtime_seconds']}s. Supervisor: {meta['supervisor']}")
 
 

@@ -72,3 +72,15 @@ heads and layers for the `bias` mode. Rows written before these two columns exis
 | 2026-10-13 | `itransformer_path_feats6` (seed 1) | path_feats + 2 channels: overnight gap log(open/prev close) and log VIX close (6 channels) | 0.5112 | +6.4% | 0.5029 | 1.290 | — | 319s |
 | 2026-10-13 | `itransformer_path_feats6` (seed 2) | path_feats + 2 channels: overnight gap log(open/prev close) and log VIX close (6 channels) | 0.4934 | +9.6% | 0.5090 | 1.276 | — | 319s |
 | 2026-10-13 | **`itransformer_path_feats6` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4934 to 0.5112 (width 0.0178) | 0.4993 | +8.5% | 0.5080 | 1.286 | — | 956s total |
+| 2026-10-13 | `earnings_jump:supervisor` | Earnings layer A (jump): + 252/5·J to the variance in earnings weeks, then calibrated; supervisor; retuned window 120, temperature 0.25 | 0.4263 | +21.9% | 0.4087 | — | — | — |
+| 2026-10-13 | `earnings_jump:equal_weight` | Earnings layer A (jump): + 252/5·J to the variance in earnings weeks, then calibrated; equal-weight | 0.4300 | +21.2% | 0.4109 | — | — | — |
+| 2026-10-13 | `earnings_jump:short_term` | Earnings layer A (jump): + 252/5·J to the variance in earnings weeks, then calibrated; short-term | 0.4881 | +10.6% | 0.4314 | 1.142 | — | — |
+| 2026-10-13 | `earnings_jump:regime` | Earnings layer A (jump): + 252/5·J to the variance in earnings weeks, then calibrated; regime | 0.4807 | +12.0% | 0.4442 | 1.005 | — | — |
+| 2026-10-13 | `earnings_jump:weak_signals` | Earnings layer A (jump): + 252/5·J to the variance in earnings weeks, then calibrated; weak-signals | 0.4338 | +20.5% | 0.4085 | 1.221 | — | — |
+| 2026-10-13 | `earnings_jump:itransformer` | Earnings layer A (jump): + 252/5·J to the variance in earnings weeks, then calibrated; itransformer | 0.4275 | +21.7% | 0.4305 | 1.188 | — | — |
+| 2026-10-13 | `earnings_split:supervisor` | Earnings layer B (split calibration): earnings and ordinary weeks calibrated separately; supervisor; retuned window 120, temperature 1.0 | 0.4320 | +20.9% | 0.4113 | — | — | — |
+| 2026-10-13 | `earnings_split:equal_weight` | Earnings layer B (split calibration): earnings and ordinary weeks calibrated separately; equal-weight | 0.4329 | +20.7% | 0.4121 | — | — | — |
+| 2026-10-13 | `earnings_split:short_term` | Earnings layer B (split calibration): earnings and ordinary weeks calibrated separately; short-term | 0.4923 | +9.8% | 0.4341 | 1.200 | — | — |
+| 2026-10-13 | `earnings_split:regime` | Earnings layer B (split calibration): earnings and ordinary weeks calibrated separately; regime | 0.4814 | +11.8% | 0.4471 | 1.048 | — | — |
+| 2026-10-13 | `earnings_split:weak_signals` | Earnings layer B (split calibration): earnings and ordinary weeks calibrated separately; weak-signals | 0.4379 | +19.8% | 0.4076 | 1.287 | — | — |
+| 2026-10-13 | `earnings_split:itransformer` | Earnings layer B (split calibration): earnings and ordinary weeks calibrated separately; itransformer | 0.4342 | +20.5% | 0.4321 | 1.254 | — | — |

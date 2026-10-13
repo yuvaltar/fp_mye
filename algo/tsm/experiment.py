@@ -41,7 +41,7 @@ from tsm.backtest import BACKTEST_START, BASELINE_SKILL, TEST_START, calibrate, 
 from tsm.config import ARTIFACTS_DIR, DOCS_DIR, TICKERS, VIX_TICKER
 from tsm.data import Panel, align_panel, freeze_prices, load_prices
 from tsm.models.itransformer import CANDIDATES, build_candidate, summarize_gates
-from tsm.report import scored_rows
+from tsm.report import VALIDATION_START, scored_rows, validation_rows
 from tsm.skills.base import TemporalSkill
 from tsm.supervisor import qlike
 
@@ -51,9 +51,8 @@ META_FILE = ARTIFACTS_DIR / "meta.json"
 # Per-candidate predictions, kept out of git: they are reproducible from a seed.
 EXPERIMENTS_DIR = Path(__file__).resolve().parents[1] / "experiments"
 
-# The validation year: the last full year before the test period, never used to report results.
-# Choices between candidates (e.g. which graph mode wins) are made on it, not on the test QLIKE.
-VALIDATION_START = "2019-01-01"
+# The validation year (2019, from tsm.report) is never used to report results: choices
+# between candidates (e.g. which graph mode wins) are made on it, not on the test QLIKE.
 
 # One line per model, so the table says what was actually run.
 DESCRIPTIONS = {
@@ -249,14 +248,6 @@ def run_candidates(
     return pd.concat(parts, axis=1).reset_index(), runtimes, gates
 
 
-def validation_rows(frame: pd.DataFrame, start: str = VALIDATION_START, end: str = TEST_START) -> pd.DataFrame:
-    """Rows of the validation year whose outcome is known, picked the way ``scored_rows`` picks the test rows."""
-    rows = frame[
-        (frame["date"] >= pd.Timestamp(start)) & (frame["date"] < pd.Timestamp(end)) & frame["realized_vol"].notna()
-    ]
-    return rows.dropna()
-
-
 def score(frame: pd.DataFrame, names: list[str], test_start: str = TEST_START) -> pd.DataFrame:
     """Calibrate every model the same way, then score from ``test_start`` and on the validation year."""
     calibrated = calibrate(frame, names)
@@ -280,9 +271,11 @@ def score(frame: pd.DataFrame, names: list[str], test_start: str = TEST_START) -
 def _row(label: str, experiment: str, description: str, row, runtime: str, today: str) -> str:
     gate = row.get("gate")
     gate_cell = "—" if gate is None or pd.isna(gate) else f"{gate:.3f}"
+    # A combination built from calibrated skills (supervisor, equal-weight) has no factor of its own.
+    factor_cell = "—" if pd.isna(row["factor"]) else f"{row['factor']:.3f}"
     return (
         f"| {today} | {experiment} | {description} | {row['QLIKE']:.4f} | "
-        f"{row['gain']:+.1f}% | {row['QLIKE_2019']:.4f} | {row['factor']:.3f} | {gate_cell} | {runtime} |"
+        f"{row['gain']:+.1f}% | {row['QLIKE_2019']:.4f} | {factor_cell} | {gate_cell} | {runtime} |"
     )
 
 

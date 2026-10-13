@@ -3,6 +3,8 @@ exercises it: a syntax error or a bad format string there survives the whole sui
 only shows up at the end of a long run. These tests render a real report from a small
 synthetic frame instead, which is fast because no skill is fitted.
 """
+import re
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -119,3 +121,37 @@ def test_report_scores_only_dates_with_a_known_outcome(frame, meta, tmp_path):
     text = (tmp_path / "backtest.md").read_text(encoding="utf-8")
     scored = frame[(frame["date"] >= pd.Timestamp(TEST_START)) & frame["realized_vol"].notna()]
     assert f"{len(scored)} scored predictions" in text
+
+
+def test_the_report_with_the_earnings_layer(tmp_path):
+    """End to end on a synthetic panel: the layer on, the comparison and placebo, then the report."""
+    from tests.conftest import make_panel, release_table, with_reaction_jumps
+    from tsm import backtest
+    from tsm.earnings_jump import reaction_positions, trading_calendar
+    from tsm.skills.regime import RegimeSkill
+    from tsm.skills.short_term import ShortTermSkill
+
+    panel = make_panel()
+    releases = release_table(panel, [(t, r + 3 * (t == "BBB"), ("before_open", "after_close")[i % 2])
+                                     for t in ("AAA", "BBB") for i, r in enumerate(range(100, 420, 40))])
+    panel = with_reaction_jumps(panel, releases)
+    reactions = reaction_positions(releases, trading_calendar(next(iter(panel.values())).index))
+    raw = backtest.run_skills(panel, [ShortTermSkill(), RegimeSkill()], start="2018-01-01")
+    start = "2018-05-01"
+    frame, supervisor = backtest.finish_pipeline(raw, panel, SKILL_NAMES, reactions, tune_before=start)
+    earnings = backtest.earnings_comparison(raw, panel, SKILL_NAMES, reactions, frame, test_start=start)
+    meta = {
+        "model_version": "0.0.0-test", "skills": SKILLS, "test_start": start, "last_date": "2018-08-10",
+        "supervisor": {"window": supervisor.window, "temperature": supervisor.temperature},
+        "calibration_window": CALIBRATION_WINDOW,
+        "earnings": {"enabled": True, "known_days_ahead": 5, "source": "Yahoo Finance"},
+    }
+    table = write_report(frame, meta, docs_dir=tmp_path, earnings=earnings)
+    text = (tmp_path / "backtest.md").read_text(encoding="utf-8")
+    assert "## Earnings layer" in text and "**Placebo:**" in text
+    assert "known at least 5 trading days ahead" in " ".join(text.split())  # the assumption, whatever the wrapping
+    assert "HAR-RV baseline (plain `short_term`, no earnings jump)" in text
+    assert "short_term" in table.index  # the skill has its own row when the baseline is plain
+    assert set(earnings["placebo"]) == {20, -20}
+    section = text.split("## Earnings layer")[1].split("## Average weight")[0]
+    assert not re.search(r"\bnan\b", section), "a number in the earnings section is missing"
