@@ -13,7 +13,7 @@ from tsm.skills.short_term import ShortTermSkill
 from tsm.skills.weak_signals import WeakSignalsSkill
 from tsm.target import forward_realized_vol
 
-from tests.conftest import corrupt_after
+from tests.conftest import corrupt_after, release_table, with_reaction_jumps
 
 START = "2018-01-01"  # row 260 of the synthetic panel
 TUNE_BEFORE = "2018-05-01"
@@ -186,3 +186,83 @@ def test_calibration_window_forgets_old_outcomes(panel, monkeypatch):
     short = backtest.calibration_factors(raw, names, window=20)
     long = backtest.calibration_factors(raw, names, window=250)
     assert not np.allclose(short["short_term"].to_numpy(), long["short_term"].to_numpy())
+
+
+# ---------------------------------------------------------------- with the earnings layer (Step 13)
+
+def earnings_releases(panel, beyond_horizon=True):
+    """Synthetic releases for AAA and BBB. AAA reacts at CUT+2 (known ahead by assumption, but its
+    move is after the cut); BBB's next release reacts at CUT+8, beyond the 5-day horizon, and is
+    left out of the second run together with the later ones."""
+    rows = [(t, r + (3 if t == "BBB" else 0), ("before_open", "after_close")[i % 2])
+            for t in ("AAA", "BBB") for i, r in enumerate((100, 140, 180, 220, 260, 300, 340, 370))]
+    rows.append(("AAA", CUT + 2, "before_open"))
+    if beyond_horizon:
+        rows += [("BBB", CUT + 7, "after_close"), ("AAA", 395, "after_close"), ("BBB", 410, "before_open")]
+    else:
+        rows.append(("AAA", 400, "before_open"))
+    return release_table(panel, rows)
+
+
+def run_with_earnings(panel, releases, monkeypatch, skills=None):
+    from tsm.earnings_jump import reaction_positions, trading_calendar
+
+    monkeypatch.setattr(backtest, "BACKTEST_START", START)
+    skills = fast_skills() if skills is None else skills
+    raw = backtest.run_skills(panel, skills, start=START)
+    reactions = reaction_positions(releases, trading_calendar(next(iter(panel.values())).index))
+    return backtest.finish_pipeline(raw, panel, [s.name for s in skills], reactions, tune_before=TUNE_BEFORE)
+
+
+def test_no_future_leakage_in_the_whole_pipeline_with_earnings(panel, monkeypatch):
+    """The same rule with the earnings layer on: prices after the cut, and releases reacting more
+    than 5 trading days after it, must not move anything computed up to the cut."""
+    known = earnings_releases(panel)
+    panel = with_reaction_jumps(panel, known)
+    clean, supervisor_clean = run_with_earnings(panel, known, monkeypatch)
+    dirty, supervisor_dirty = run_with_earnings(corrupt_after(panel, CUT), earnings_releases(panel, False), monkeypatch)
+    assert supervisor_clean == supervisor_dirty
+
+    upto = clean["position"] <= CUT
+    forecasts = [c for c in clean.columns if c.startswith(("pred_", "raw_pred_", "c_", "w_"))]
+    forecasts += ["supervisor", "confidence", "naive", "equal_weight", "baseline"]
+    forecasts += ["earnings_week", "reaction_date", "earnings_J"]
+    assert {f"c_{s.name}" for s in fast_skills()} <= set(forecasts)
+    assert clean.loc[upto, "earnings_week"].any() and (clean.loc[upto, "earnings_J"] > 0).any()
+    pd.testing.assert_frame_equal(clean.loc[upto, forecasts], dirty.loc[upto, forecasts])
+
+    after = clean["position"] > CUT + 5
+    assert not np.allclose(clean.loc[after, "supervisor"], dirty.loc[after, "supervisor"])
+
+
+def test_with_earnings_the_raw_predictions_and_the_baseline_stay_plain(panel, monkeypatch):
+    """raw_pred_<skill> is each model's own prediction and the HAR-RV baseline has no jump;
+    the skills' forecasts get the jump in earnings weeks only."""
+    releases = earnings_releases(panel)
+    panel = with_reaction_jumps(panel, releases)
+    skills = [ShortTermSkill(), RegimeSkill(), WeakSignalsSkill()]  # the property holds for any skills
+    with_layer, _ = run_with_earnings(panel, releases, monkeypatch, skills)
+    raw = backtest.run_skills(panel, skills, start=START)
+    without, _ = backtest.finish_pipeline(raw, panel, [s.name for s in skills], tune_before=TUNE_BEFORE)
+
+    for skill in skills:
+        np.testing.assert_array_equal(with_layer[f"raw_pred_{skill.name}"], without[f"raw_pred_{skill.name}"])
+    pd.testing.assert_series_equal(with_layer["baseline"], without["baseline"])
+    week = with_layer["earnings_week"]
+    jumped = np.sqrt(with_layer["raw_pred_short_term"] ** 2 + 252 / 5 * with_layer["earnings_J"])
+    expected = np.where(week, jumped, with_layer["raw_pred_short_term"]) * with_layer["c_short_term"]
+    np.testing.assert_allclose(with_layer["pred_short_term"], expected)
+    assert with_layer.loc[week, "reaction_date"].notna().all() and with_layer.loc[~week, "reaction_date"].isna().all()
+    days = next(iter(panel.values())).index
+    gap = days.get_indexer(with_layer.loc[week, "reaction_date"]) - with_layer.loc[week, "position"].to_numpy()
+    assert ((gap >= 1) & (gap <= 5)).all()  # the reaction it refers to is in p+1..p+5
+
+
+def test_tickers_without_a_next_release_are_named():
+    """Judged on release dates: a release far beyond the calendar's few extra days still counts."""
+    from tsm.earnings_jump import without_next_release
+
+    releases = pd.DataFrame(
+        {"ticker": ["AAA", "AAA", "BBB"], "date": pd.to_datetime(["2026-07-30", "2026-11-02", "2026-07-30"])}
+    )
+    assert without_next_release(releases, ["AAA", "BBB", "SPY"], pd.Timestamp("2026-10-07")) == ["BBB", "SPY"]

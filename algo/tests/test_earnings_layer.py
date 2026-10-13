@@ -9,7 +9,8 @@ from tsm.skills.base import MIN_VOL, TemporalSkill
 from tsm.skills.short_term import ShortTermSkill
 from tsm.target import realized_vol
 
-from tests.conftest import corrupt_after
+from tests.conftest import corrupt_after, release_table
+from tests.conftest import with_reaction_jumps as with_jumps
 
 START = "2018-01-01"  # row 260 of the synthetic panel
 TUNE_BEFORE = "2018-05-01"
@@ -142,12 +143,6 @@ def test_the_unchanged_committee_is_the_backtest(panel):
     pd.testing.assert_frame_equal(frame[columns], expected[columns])
 
 
-def release_table(panel, rows):
-    """``rows``: (ticker, panel row, timing) triples."""
-    days = next(iter(panel.values())).index
-    return pd.DataFrame([{"ticker": t, "date": days[r], "timing": timing} for t, r, timing in rows])
-
-
 @pytest.mark.parametrize("variant", ["jump", "split"])
 def test_no_future_leakage(panel, variant):
     """Prices after p, and releases reacting after p+5, must not move any forecast up to p.
@@ -175,21 +170,6 @@ def test_no_future_leakage(panel, variant):
     assert not np.allclose(clean.loc[after, "supervisor"], dirty.loc[after, "supervisor"])
 
 
-def with_jumps(panel, release_rows, size=0.08):
-    """The panel with a log move of ``size`` on every reaction day, so the jump J is positive."""
-    calendar = layer.trading_calendar(next(iter(panel.values())).index)
-    out = {}
-    for ticker, frame in panel.items():
-        shift = np.zeros(len(frame))
-        days = layer.reaction_positions(release_rows, calendar).get(ticker, np.empty(0, dtype=int))
-        shift[days[days < len(frame)]] = size
-        factor = np.exp(np.cumsum(shift))[:, None]
-        frame = frame.copy()
-        frame[["open", "high", "low", "close"]] = frame[["open", "high", "low", "close"]].to_numpy() * factor
-        out[ticker] = frame
-    return out
-
-
 def test_a_release_within_five_days_is_known_ahead_by_assumption(panel):
     """The flip side: a release reacting at p+1..p+5 does change the forecast at p, by design."""
     panel = with_jumps(panel, releases(panel))
@@ -199,4 +179,6 @@ def test_a_release_within_five_days_is_known_ahead_by_assumption(panel):
     changed, _ = run(panel, without, "jump")
     p = clean[(clean["ticker"] == "AAA") & (clean["position"] == 368)].index
     assert clean.loc[p, "earnings_week"].item() and not changed.loc[p, "earnings_week"].item()
-    assert clean.loc[p, "raw_pred_trailing"].item() != changed.loc[p, "raw_pred_trailing"].item()
+    # The forecast moves; raw_pred_ stays the model's own prediction (Step 13), with or without the release.
+    assert clean.loc[p, "pred_trailing"].item() != changed.loc[p, "pred_trailing"].item()
+    assert clean.loc[p, "raw_pred_trailing"].item() == changed.loc[p, "raw_pred_trailing"].item()

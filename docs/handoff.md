@@ -18,7 +18,8 @@ Written for a new Claude Code session that continues Yuval's work on the engine.
 11. **Steps 8–9 (market map, graph iTransformer): the graph adds nothing measurable** over path_feats; see the end of section 6.
 12. **Step 10:** `pair_2019` (0.2·path_feats + 0.8·weak_signals) wins on 2019 and edges weak_signals on test (0.4864 vs 0.4885); two more input channels (gap, VIX) made path_feats worse.
 13. **Step 11 (product change):** the API now returns the skill names `short_term`, `regime`, `weak_signals`, `itransformer`. Maor's site labels `multivariate` but shows `itransformer` through its fallback label: tell Maor (not a contract change).
-14. **Step 12:** earnings dates collected (Yahoo, checked against SEC); the earnings layer's jump variant takes the supervisor to 0.4263 on test (experiment, not in the product).
+14. **Step 12:** earnings dates collected (Yahoo, checked against SEC); the earnings layer's jump variant takes the supervisor to 0.4263 on test.
+15. **Step 13 (product change):** the earnings layer is on in `python -m tsm.backtest`; the supervisor is now 0.4263 (+21.9% vs HAR-RV). The API's shape is unchanged.
 10. Working tree clean. No uncommitted work.
 
 ---
@@ -191,6 +192,9 @@ Added with the `add-temporal-skill` procedure, then `backtest-report`, run as `p
 ### Step 12 part 2: earnings layer (`b77157a`), experiment only
 `python -m tsm.earnings_layer` adds earnings information on top of the committee's saved raw predictions (no retraining) and rebuilds calibration, equal-weight and the retuned supervisor with the backtest's own steps. Earnings week = a reaction day in p+1..p+5 (7.8% of test forecasts). **Variant A (jump: + 252/5·J to the variance in earnings weeks) wins on 2019**: supervisor 0.4263 test / 0.4087 2019, against 0.4862 / 0.4662 now (+21.9% vs HAR-RV instead of +10.9%); in earnings weeks QLIKE drops from 1.18 to 0.54. Variant B (split calibration) 0.4320 / 0.4113. Placebo with reaction days shifted ±20 trading days: no gain (0.4880 / 0.4865), so the gain comes from the real dates. **Not in the product yet**: putting it there means the API's predictions depend on Yahoo earnings dates (assumed known 5 trading days ahead) and needs its own step (backtest, artifacts, report).
 
+### Step 13: the earnings layer is in the product
+`python -m tsm.backtest` applies the jump (variant A) by default, through `tsm/earnings_jump.py`, which `tsm.earnings_layer` also uses. `raw_pred_<skill>` stays each model's own prediction and the HAR-RV baseline stays plain (both bit-identical to before), so every "vs HAR-RV" and every experiments.md row stays comparable. New per-row columns: `earnings_week`, `reaction_date`, `earnings_J`. `--no-earnings` reproduces the old path. Result (frozen cache): supervisor **0.4263** (+21.9% vs HAR-RV, t-statistic 9.34), equal-weight 0.4300, itransformer 0.4275, weak_signals 0.4338. The backtest needs the saved earnings dates (`algo/data/earnings/yahoo.csv`, git-ignored): on a fresh clone run `python -m tsm.earnings` first, or pass `--no-earnings`. Refresh the dates before a live run, or recent releases will be missing (the log names tickers with no scheduled release; on 2026-10-07: HD, LOW).
+
 ## 7. Scoreboard (one table)
 
 QLIKE from 2020-01-02 to 2026-09-30, 52 tickers, 88,140 predictions on 1,695 dates, all models calibrated, lower is better.
@@ -250,6 +254,8 @@ Supervisor RMSE 0.1730 / MAE 0.1165; equal-weight is slightly better on RMSE (0.
 - **Rule:** a contract change needs agreement from both teams and one PR that updates the schema, the mocks and both sides. Do not edit `/contracts` without that agreement. Do not touch `/web`.
 
 ---
+
+**Contract v2 candidate (not agreed, not implemented):** a per-prediction field "earnings in the next 5 trading days" (the reaction date, or null), so the site can show why a forecast jumped. The engine already has it per row (`earnings_week`, `reaction_date` in `predictions.csv`); the API keeps the current contract shape until both teams agree on v2.
 
 ## 10. Gotchas
 
