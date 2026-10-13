@@ -1,0 +1,1016 @@
+[
+  {
+    "ticker": "AAPL",
+    "skills": [
+      {
+        "name": "short_trend",
+        "horizon": "short"
+      },
+      {
+        "name": "weak_signals",
+        "horizon": "short"
+      },
+      {
+        "name": "medium_trend",
+        "horizon": "medium"
+      },
+      {
+        "name": "seasonality",
+        "horizon": "long"
+      }
+    ],
+    "points": [
+      {
+        "as_of_date": "2026-09-17",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3637
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0599
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.36
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.2164
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-18",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3343
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0417
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3659
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.2581
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-21",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3574
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0305
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3646
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.2475
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-22",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3481
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0312
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3766
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.2441
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-23",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.373
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0381
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3926
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1963
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-24",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3428
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0313
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.4069
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.219
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-25",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3361
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.083
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3762
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.2047
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-28",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3228
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0818
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.4006
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1948
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-29",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.348
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0825
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3993
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1702
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-30",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3477
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0668
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.4173
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1682
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-01",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3536
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.0548
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.4394
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1522
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-02",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.339
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.1054
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.42
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1356
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-05",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3339
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.1514
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.4053
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1094
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-06",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3455
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.1979
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3706
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.086
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-07",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.34
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.16
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.31
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.19
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ticker": "TEVA",
+    "skills": [
+      {
+        "name": "short_trend",
+        "horizon": "short"
+      },
+      {
+        "name": "weak_signals",
+        "horizon": "short"
+      },
+      {
+        "name": "medium_trend",
+        "horizon": "medium"
+      },
+      {
+        "name": "seasonality",
+        "horizon": "long"
+      }
+    ],
+    "points": [
+      {
+        "as_of_date": "2026-09-17",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.412
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3222
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.1602
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1056
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-18",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.386
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3482
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.1818
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.084
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-21",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3149
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3264
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.219
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1397
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-22",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.2922
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3389
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.1931
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1758
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-23",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.2764
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3308
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.222
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1708
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-24",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.2315
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.337
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2628
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1687
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-25",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.2177
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3311
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2929
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1583
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-28",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.2082
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3695
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.3002
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1221
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-29",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.2168
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3933
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2478
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1421
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-30",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.2163
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3605
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2602
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.163
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-01",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.1826
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3741
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2781
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1652
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-02",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.1884
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3766
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2469
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1881
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-05",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.1766
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.345
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2811
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1973
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-06",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.204
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.3489
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2894
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1577
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-07",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.22
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.37
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.26
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.15
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "ticker": "NVDA",
+    "skills": [
+      {
+        "name": "short_trend",
+        "horizon": "short"
+      },
+      {
+        "name": "weak_signals",
+        "horizon": "short"
+      },
+      {
+        "name": "medium_trend",
+        "horizon": "medium"
+      },
+      {
+        "name": "seasonality",
+        "horizon": "long"
+      }
+    ],
+    "points": [
+      {
+        "as_of_date": "2026-09-17",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4923
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.1828
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2217
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1032
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-18",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4934
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.1967
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2177
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.0922
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-21",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4914
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2108
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2018
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.096
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-22",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4944
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2164
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2355
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.0537
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-23",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4424
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2432
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2315
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.0829
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-24",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4349
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2607
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.1951
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1093
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-25",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.3998
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2842
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.1849
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1311
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-28",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4367
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2727
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.1616
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.129
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-29",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.427
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2241
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.1909
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.158
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-09-30",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4154
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2167
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2201
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1478
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-01",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4051
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2017
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2451
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1481
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-02",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4205
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.1833
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2252
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.171
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-05",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4371
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.2103
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.196
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1566
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-06",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.4168
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.1868
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.2185
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.1779
+          }
+        ]
+      },
+      {
+        "as_of_date": "2026-10-07",
+        "weights": [
+          {
+            "name": "short_trend",
+            "weight": 0.41
+          },
+          {
+            "name": "weak_signals",
+            "weight": 0.24
+          },
+          {
+            "name": "medium_trend",
+            "weight": 0.23
+          },
+          {
+            "name": "seasonality",
+            "weight": 0.12
+          }
+        ]
+      }
+    ]
+  }
+]
