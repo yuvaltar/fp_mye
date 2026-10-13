@@ -32,9 +32,12 @@ export default async function PerformancePage() {
         <>
           <dl className="mb-6 grid grid-cols-2 gap-3 text-sm lg:grid-cols-4">
             <Fact label="Period" value={`${formatDate(result.data.period_start)} – ${formatDate(result.data.period_end)}`} />
-            <Fact label="Evaluation dates" value={String(result.data.evaluation_dates)} />
-            <Fact label="Tickers" value={result.data.tickers.join(", ")} />
-            <Fact label="Report generated" value={formatDate(result.data.generated_at)} />
+            <Fact label="Evaluation dates" value={result.data.evaluation_dates.toLocaleString("en-US")} />
+            <Fact label="Tickers" value={String(result.data.tickers.length)} />
+            <Fact
+              label="Report"
+              value={`${formatDate(result.data.generated_at)} · v${result.data.model_version}`}
+            />
           </dl>
           <PerformanceTable data={result.data} />
         </>

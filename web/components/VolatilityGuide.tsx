@@ -1,4 +1,5 @@
 import {
+  VOL_REFERENCE_SOURCE,
   VOL_CALM_BELOW,
   VOL_CRISIS_ABOVE,
   VOL_STORMY_ABOVE,
@@ -72,7 +73,7 @@ export function VolatilityGuide({ predictedVol }: { predictedVol: number }) {
           ))}
         </ul>
         <p className="mt-2 text-xs text-muted">
-          Typical levels come from the project&apos;s own data: 10 large stocks since 2018.
+          Typical levels come from {VOL_REFERENCE_SOURCE}.
         </p>
       </div>
     </section>

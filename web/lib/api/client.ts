@@ -5,24 +5,24 @@
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { sampleWeightsHistory, samplePerformance, samplePrices } from "./fixtures.ts";
+import { samplePrices } from "./fixtures.ts";
 import {
   fetchMarketPrices,
   fetchMarketQuotes,
   marketDataEnabled,
   type QuoteSummary,
 } from "./market.ts";
-import type {
-  OverviewEntry,
-  OverviewResponse,
-  Optional,
-  PerformanceResponse,
-  PricesResponse,
-  UniverseEntry,
-  WeightsHistoryResponse,
-} from "./proposed-types.ts";
+import type { Optional, PricesResponse } from "./extras-types.ts";
 import { SP500 } from "./sp500.ts";
-import type { HistoryResponse, Prediction, TickersResponse } from "./types.ts";
+import type {
+  HistoryResponse,
+  OverviewResponse,
+  PerformanceResponse,
+  Prediction,
+  TickerInfo,
+  TickersResponse,
+  WeightsHistoryResponse,
+} from "./types.ts";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -96,7 +96,59 @@ async function readMockForTicker<T extends { ticker: string }>(
   return match;
 }
 
+/**
+ * The engine serves what its last run produced, so answers only change when it
+ * runs again. Successful answers are kept in this server's memory for a short
+ * time (a watchlist of 50 tickers is ~100 requests, ~10 MB). Off under the
+ * test runner, where NODE_ENV is not set by Next.
+ */
+/** An answer is fresh for this long; older ones are served once more while a refresh runs. */
+const API_FRESH_MS = 30_000;
+/** Past this age an answer is never served; the caller waits for a new one. */
+const API_STALE_MS = 10 * 60_000;
+const apiCache = new Map<string, { fetchedAt: number; value: Promise<unknown>; refreshing: boolean }>();
+
+function cacheEnabled(): boolean {
+  return process.env.NODE_ENV === "production" || process.env.NODE_ENV === "development";
+}
+
+/**
+ * Same as fetchJson, with a stale-while-revalidate cache: a stale answer is
+ * returned immediately and refreshed in the background, so nobody waits for
+ * the ~100 requests of a big watchlist except the very first visitor.
+ */
 async function fetchJson<T>(pathAndQuery: string, ticker?: string): Promise<T> {
+  if (!cacheEnabled()) return fetchJsonUncached<T>(pathAndQuery, ticker);
+  const key = `${apiBaseUrl()}${pathAndQuery}`;
+  const hit = apiCache.get(key);
+  const now = Date.now();
+
+  if (hit && now - hit.fetchedAt < API_FRESH_MS) return hit.value as Promise<T>;
+
+  if (hit && now - hit.fetchedAt < API_STALE_MS) {
+    if (!hit.refreshing) {
+      hit.refreshing = true;
+      const fresh = fetchJsonUncached<T>(pathAndQuery, ticker);
+      fresh.then(
+        () => apiCache.set(key, { fetchedAt: Date.now(), value: fresh, refreshing: false }),
+        () => {
+          hit.refreshing = false; // keep serving the old answer, try again next time
+        },
+      );
+    }
+    return hit.value as Promise<T>;
+  }
+
+  const value = fetchJsonUncached<T>(pathAndQuery, ticker);
+  apiCache.set(key, { fetchedAt: now, value, refreshing: false });
+  // A failure must not be remembered: the next request tries again.
+  value.catch(() => {
+    if (apiCache.get(key)?.value === value) apiCache.delete(key);
+  });
+  return value;
+}
+
+async function fetchJsonUncached<T>(pathAndQuery: string, ticker?: string): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${apiBaseUrl()}${pathAndQuery}`, { cache: "no-store" });
@@ -150,9 +202,9 @@ export async function getPrices(ticker: string): Promise<Optional<PricesResponse
     const prediction = await readMockForTicker<Prediction>("mock_prediction.json", symbol);
     return { state: "available", data: samplePrices(prediction), sample: true };
   }
-  // Live mode: the engine's own /prices wins; otherwise real market data.
-  const fromEngine = await fetchOptional<PricesResponse>(`/prices?ticker=${encodeURIComponent(symbol)}`);
-  if (fromEngine.state === "available" || !marketDataEnabled()) return fromEngine;
+  // Live mode: the engine does not serve prices (contract v2 has no /prices),
+  // so real prices come from the market data source or not at all.
+  if (!marketDataEnabled()) return { state: "unavailable" };
   const real = await fetchMarketPrices(symbol);
   return real
     ? { state: "available", data: real, sample: false, source: "market" }
@@ -165,72 +217,68 @@ export async function getQuotes(tickers: readonly string[]): Promise<Map<string,
   return fetchMarketQuotes(tickers);
 }
 
-/** PROPOSED GET /weights?ticker=XXX: skill weights over time. */
+/**
+ * GET /weights?ticker=XXX (contract v2): skill weights over time. Mock mode
+ * reads mock_weights.json and flags it as sample; with an engine that does not
+ * have the endpoint yet the section is "unavailable".
+ */
 export async function getWeightsHistory(
   ticker: string,
 ): Promise<Optional<WeightsHistoryResponse>> {
   const symbol = normalizeTicker(ticker);
   if (useMocks()) {
-    const prediction = await readMockForTicker<Prediction>("mock_prediction.json", symbol);
-    const history = await readMockForTicker<HistoryResponse>("mock_history.json", symbol);
-    const dates = history.points.map((point) => point.as_of_date);
-    return { state: "available", data: sampleWeightsHistory(prediction, dates), sample: true };
+    const data = await readMockForTicker<WeightsHistoryResponse>("mock_weights.json", symbol);
+    return { state: "available", data, sample: true };
   }
   return fetchOptional<WeightsHistoryResponse>(`/weights?ticker=${encodeURIComponent(symbol)}`);
 }
 
-/** PROPOSED GET /performance: backtest summary. */
+/** GET /performance (contract v2): the backtest summary. Mock mode reads mock_performance.json. */
 export async function getPerformance(): Promise<Optional<PerformanceResponse>> {
   if (useMocks()) {
-    return { state: "available", data: samplePerformance(), sample: true };
+    const data = (await readMock("mock_performance.json")) as PerformanceResponse;
+    return { state: "available", data, sample: true };
   }
   return fetchOptional<PerformanceResponse>("/performance");
 }
 
 /**
- * The tickers to list. Live mode: GET /tickers as served (no sector yet).
- * Mock mode: the S&P 500 constituents plus the contract's mock tickers (TEVA
- * is not in the S&P 500), so the list has real companies even though only
- * the mock tickers have predictions.
+ * The tickers to list, with the optional sector. Live mode: GET /tickers as
+ * served. Mock mode: the S&P 500 constituents plus the contract's mock tickers
+ * (TEVA is not in the S&P 500), so the list has real companies even though
+ * only the mock tickers have predictions.
  */
-export async function getUniverse(): Promise<UniverseEntry[]> {
+export async function getUniverse(): Promise<TickerInfo[]> {
   if (!useMocks()) {
     const { tickers } = await fetchJson<TickersResponse>("/tickers");
-    return tickers.map((t) => ({ ticker: t.ticker, name: t.name }));
+    return tickers;
   }
   const mock = ((await readMock("mock_tickers.json")) as TickersResponse).tickers;
-  const byTicker = new Map<string, UniverseEntry>(
+  const byTicker = new Map<string, TickerInfo>(
     SP500.map(([ticker, name, sector]) => [ticker, { ticker, name, sector }]),
   );
   for (const t of mock) {
-    byTicker.set(t.ticker, { ...byTicker.get(t.ticker), ticker: t.ticker, name: t.name });
+    byTicker.set(t.ticker, { ...byTicker.get(t.ticker), ...t });
   }
   return [...byTicker.values()].sort((a, b) => a.ticker.localeCompare(b.ticker));
 }
 
 /**
- * PROPOSED GET /overview. Mock mode builds it from the mock prediction and
- * history files (so only the mock tickers appear) and is flagged as sample;
- * live mode returns "unavailable" until the engine offers the endpoint.
+ * GET /overview (contract v2): the watchlist's numbers for every ticker in one
+ * request. Mock mode reads mock_overview.json (only the mock tickers appear);
+ * an engine without the endpoint gives "unavailable" and the watchlist falls
+ * back to per-ticker requests.
  */
 export async function getOverview(): Promise<Optional<OverviewResponse>> {
-  if (!useMocks()) return fetchOptional<OverviewResponse>("/overview");
-  const predictions = (await readMock("mock_prediction.json")) as Prediction[];
-  const histories = (await readMock("mock_history.json")) as HistoryResponse[];
-  const entries: OverviewEntry[] = predictions.map((p) => {
-    const points = histories.find((h) => h.ticker === p.ticker)?.points ?? [];
-    let latest: number | null = null;
-    for (const point of points) if (point.realized_vol !== null) latest = point.realized_vol;
-    return {
-      ticker: p.ticker,
-      as_of_date: p.as_of_date,
-      predicted_vol: p.predicted_vol,
-      baseline_vol: p.baseline_vol,
-      supervisor_confidence: p.supervisor_confidence,
-      latest_realized_vol: latest,
-    };
-  });
-  return { state: "available", data: { entries }, sample: true };
+  if (!useMocks()) {
+    const result = await fetchOptional<OverviewResponse>("/overview");
+    // Anything that is not shaped like an overview is treated as missing.
+    return result.state === "available" && !Array.isArray(result.data?.entries)
+      ? { state: "unavailable" }
+      : result;
+  }
+  const data = (await readMock("mock_overview.json")) as OverviewResponse;
+  return { state: "available", data, sample: true };
 }
 
 /** GET /tickers */

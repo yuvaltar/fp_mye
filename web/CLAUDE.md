@@ -46,12 +46,20 @@ web/
 - Yahoo's `chartPreviousClose` is the close before the whole range, not yesterday's: the previous close comes from the series. Contract tickers use dots (`BRK.B`), Yahoo uses dashes (`BRK-B`): map with `yahooSymbol`.
 - "Realized volatility" shown from real prices is computed by the site (`realizedVolFromCloses`, same definition as the contract) and labelled as such, never as an engine result. Listed companies without an engine prediction still show their real market data.
 
-### Proposed endpoints (not in the contract yet)
+### Contract v2 (agreed with the algo team on 2026-10-13)
 
-`/prices`, `/weights` and `/performance` are proposals documented in `docs/proposed-contract-additions.md`; their types live in `lib/api/proposed-types.ts`, separate from the contract mirror in `types.ts`.
+`/overview`, `/weights`, `/performance`, `sector` on `/tickers` and `earnings_date` on `/predict` and `/overview` are part of the contract (`contracts/README.md`, "Version 2 additions"); their types live in `lib/api/types.ts` with the other contract mirrors. `/prices` was dropped: prices come from the market data source.
 
-- In mock mode `client.ts` returns generated sample data from `lib/api/fixtures.ts` and every view that shows it carries the "Sample data" badge. Sample data is never shown without that badge and never in live mode.
-- In live mode these calls return `{ state: "unavailable" }` on any failure, and the page shows an `UnavailableNote` instead of crashing. When the algo team agrees and ships an endpoint, it starts working with no UI change; then move its types into `types.ts` and delete its fixture.
+- All of them are optional for the site: an engine without an endpoint gives `{ state: "unavailable" }` and the page shows a note or falls back (the watchlist uses per-ticker requests when `/overview` is missing; an answer that is not shaped like an overview counts as missing).
+- Mock mode reads `mock_overview.json`, `mock_weights.json` and `mock_performance.json` from `/contracts` and labels them "Sample data". The old generated fixtures for weights and performance are gone; only sample prices remain in `lib/api/fixtures.ts`.
+- The Performance page shows what `/performance` returns, with QLIKE first. Never hard-code a result sentence: `performanceSentence` is built from the response and says plainly when the supervisor does not beat HAR-RV or the t-statistic is below the usual bar.
+- Charts over long histories use `spanDays`: above `AXIS_YEAR_THRESHOLD_DAYS` the axis shows month and year, never "10 Apr" without a year.
+- `lib/api/extras-types.ts` holds only what is not engine data (prices, market snapshot, `Optional`).
+
+### Rules that outlive the contract versions
+
+- A contract change needs both teams, and one PR with the schema, the mocks and both sides.
+- Sample data (mock files, generated sample prices) is never shown without the "Sample data" label, and never in live mode.
 - Client Components must not import `lib/watchlist.ts` or `lib/api/client.ts` (server-only: they read files). Pure helpers used by Client Components live in `lib/watchlist-rows.ts`.
 
 ## Environment

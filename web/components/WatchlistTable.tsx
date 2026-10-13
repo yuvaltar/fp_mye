@@ -14,13 +14,18 @@ import {
   type WatchlistRow,
 } from "@/lib/watchlist-rows";
 import { formatDate, formatPrice, formatShare, formatSignedPercent, formatVol } from "@/lib/format";
+import { EarningsTag } from "./EarningsNotice";
 import { Sparkline } from "./Sparkline";
 import { StateMessage } from "./StateMessage";
 import { TrendBadge } from "./TrendBadge";
 
 // Literal class strings: Tailwind only keeps classes it can read in the source.
-const GRID_WITH_PRICE = "md:grid-cols-[minmax(0,2fr)_6.5rem_1fr_1fr_1fr_7.5rem_8.5rem]";
-const GRID_NO_PRICE = "md:grid-cols-[minmax(0,2fr)_6.5rem_1fr_1fr_1fr_7.5rem]";
+const GRID = {
+  priceSpark: "md:grid-cols-[minmax(0,2fr)_6.5rem_1fr_1fr_1fr_7.5rem_8.5rem]",
+  price: "md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_7.5rem_8.5rem]",
+  spark: "md:grid-cols-[minmax(0,2fr)_6.5rem_1fr_1fr_1fr_7.5rem]",
+  plain: "md:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr_7.5rem]",
+} as const;
 
 const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "predicted", label: "Predicted vol" },
@@ -44,6 +49,7 @@ export function WatchlistTable({
   const [quotes, setQuotes] = useState<QuoteMap>({});
   const [sector, setSector] = useState("");
   const [onlyPredicted, setOnlyPredicted] = useState(false);
+  const [onlyEarnings, setOnlyEarnings] = useState(false);
   // Rows with a prediction first; the rest follow in ticker order.
   const [sortKey, setSortKey] = useState<SortKey>("predicted");
   const [direction, setDirection] = useState<SortDirection>("desc");
@@ -51,13 +57,17 @@ export function WatchlistTable({
 
   const sectors = useMemo(() => sectorsOf(rows), [rows]);
   const predictedCount = useMemo(() => rows.filter((r) => r.status === "ok").length, [rows]);
+  const earningsCount = useMemo(
+    () => rows.filter((r) => r.status === "ok" && r.earningsDate).length,
+    [rows],
+  );
 
   const sorted = useMemo(() => {
-    const filtered = filterBySector(filterRows(rows, query), sector).filter(
-      (row) => !onlyPredicted || row.status === "ok",
-    );
+    const filtered = filterBySector(filterRows(rows, query), sector)
+      .filter((row) => !onlyPredicted || row.status === "ok")
+      .filter((row) => !onlyEarnings || (row.status === "ok" && row.earningsDate !== null));
     return sortRows(filtered, sortKey, direction);
-  }, [rows, query, sector, onlyPredicted, sortKey, direction]);
+  }, [rows, query, sector, onlyPredicted, onlyEarnings, sortKey, direction]);
 
   const paged = paginate(sorted, page);
 
@@ -84,7 +94,11 @@ export function WatchlistTable({
       clearInterval(timer);
     };
   }, [liveQuotes, visibleKey]);
-  const grid = liveQuotes ? GRID_WITH_PRICE : GRID_NO_PRICE;
+  // The sparkline column is dropped when no row has one (the /overview endpoint has no history).
+  const showSpark = rows.some((row) => row.status === "ok" && row.spark.length > 1);
+  const grid = liveQuotes
+    ? showSpark ? GRID.priceSpark : GRID.price
+    : showSpark ? GRID.spark : GRID.plain;
 
   if (rows.length === 0) {
     return (
@@ -158,6 +172,17 @@ export function WatchlistTable({
             Only with a prediction ({predictedCount})
           </label>
         ) : null}
+        {earningsCount > 0 ? (
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={onlyEarnings}
+              onChange={(event) => change(() => setOnlyEarnings(event.target.checked))}
+              className="size-4 accent-[var(--color-accent)]"
+            />
+            Earnings this week ({earningsCount})
+          </label>
+        ) : null}
         <div className="flex items-center gap-2 text-xs text-muted md:hidden">
           <label htmlFor="sort-select">Sort by</label>
           <select
@@ -192,7 +217,7 @@ export function WatchlistTable({
             className={`hidden gap-4 border-b border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-muted md:grid ${grid}`}
           >
             <SortHeader label="Ticker" sortKey="ticker" ariaSort={ariaSort("ticker")} onSort={toggleSort} align="left" />
-            <span className="text-right">Last 20</span>
+            {showSpark ? <span className="text-right">Last 20</span> : null}
             {COLUMNS.map((c) => (
               <SortHeader key={c.key} label={c.label} sortKey={c.key} ariaSort={ariaSort(c.key)} onSort={toggleSort} align="right" />
             ))}
@@ -208,8 +233,9 @@ export function WatchlistTable({
                   <span className="col-span-2 flex min-w-0 items-baseline gap-3 md:col-span-1">
                     <span className="font-mono font-semibold">{row.ticker}</span>
                     <span className="truncate text-sm text-muted">{row.name}</span>
+                    {row.status === "ok" && row.earningsDate ? <EarningsTag date={row.earningsDate} /> : null}
                   </span>
-                  <RowBody row={row} />
+                  <RowBody row={row} showSpark={showSpark} />
                   {liveQuotes ? <PriceCell quote={quotes[row.ticker]} /> : null}
                 </Link>
               </li>
@@ -222,15 +248,17 @@ export function WatchlistTable({
   );
 }
 
-function RowBody({ row }: { row: WatchlistRow }) {
+function RowBody({ row, showSpark }: { row: WatchlistRow; showSpark: boolean }) {
   if (row.status === "ok") {
     return (
       <>
-        <span className="col-span-2 flex md:col-span-1 md:justify-end">
-          {row.spark.length > 1 ? (
-            <Sparkline values={row.spark} label={`Recent predicted volatility for ${row.ticker}`} />
-          ) : null}
-        </span>
+        {showSpark ? (
+          <span className="col-span-2 flex md:col-span-1 md:justify-end">
+            {row.spark.length > 1 ? (
+              <Sparkline values={row.spark} label={`Recent predicted volatility for ${row.ticker}`} />
+            ) : null}
+          </span>
+        ) : null}
         <Metric label="Predicted vol" value={formatVol(row.predictedVol)} strong />
         <Metric label="HAR-RV baseline" value={formatVol(row.baselineVol)} />
         <Metric label="Recent accuracy" value={formatShare(row.confidence)} />
@@ -242,7 +270,9 @@ function RowBody({ row }: { row: WatchlistRow }) {
     );
   }
   return (
-    <span className="col-span-2 text-sm text-muted md:col-span-5 md:text-right">
+    <span
+      className={`col-span-2 text-sm text-muted md:text-right ${showSpark ? "md:col-span-5" : "md:col-span-4"}`}
+    >
       {row.status === "no-prediction" ? "No prediction yet" : "Prediction unavailable right now"}
     </span>
   );

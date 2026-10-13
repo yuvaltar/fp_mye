@@ -1,0 +1,31 @@
+{
+  "entries": [
+    {
+      "ticker": "AAPL",
+      "as_of_date": "2026-10-07",
+      "predicted_vol": 0.2251,
+      "baseline_vol": 0.212,
+      "supervisor_confidence": 0.74,
+      "latest_realized_vol": 0.243,
+      "earnings_date": null
+    },
+    {
+      "ticker": "TEVA",
+      "as_of_date": "2026-10-07",
+      "predicted_vol": 0.4079,
+      "baseline_vol": 0.371,
+      "supervisor_confidence": 0.58,
+      "latest_realized_vol": 0.3132,
+      "earnings_date": "2026-10-13"
+    },
+    {
+      "ticker": "NVDA",
+      "as_of_date": "2026-10-07",
+      "predicted_vol": 0.4948,
+      "baseline_vol": 0.468,
+      "supervisor_confidence": 0.66,
+      "latest_realized_vol": 0.4994,
+      "earnings_date": null
+    }
+  ]
+}

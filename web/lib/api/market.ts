@@ -5,7 +5,7 @@
  * an error page. Server-side only: it is called from client.ts and from the
  * /api/quotes route handler, never from the browser directly.
  */
-import type { MarketQuote, PricesResponse } from "./proposed-types.ts";
+import type { MarketQuote, PricesResponse } from "./extras-types.ts";
 
 const BASE = "https://query1.finance.yahoo.com/v8/finance";
 const HEADERS = { "User-Agent": "Mozilla/5.0 (compatible; TemporalSkillsMarket-educational-project)" };

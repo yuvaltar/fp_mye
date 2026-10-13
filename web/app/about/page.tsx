@@ -26,7 +26,7 @@ const COMMITTEE = [
   { name: "HAR-RV", range: "Short", text: "A simple formula from yesterday's, this week's and this month's volatility. It is also the baseline every result has to beat." },
   { name: "GARCH", range: "Long", text: "A classic model: a storm persists, then volatility returns to its average." },
   { name: "Boosting", range: "Short", text: "Decision trees on trading volume, the daily price range and opening gaps." },
-  { name: "iTransformer", range: "Medium", text: "A deep network that reads all the stocks together." },
+  { name: "iTransformer", range: "Medium", text: "Our own deep network, which reads all the stocks together. Its prediction is the average of three training runs." },
 ] as const;
 
 const GLOSSARY: { term: string; definition: ReactNode }[] = [
@@ -122,6 +122,18 @@ export default function AboutPage() {
             </li>
           ))}
         </ul>
+      </section>
+
+      <section aria-labelledby="earnings-heading" className="mt-10">
+        <h2 id="earnings-heading" className="text-lg font-semibold">
+          Earnings weeks
+        </h2>
+        <p className="mt-2 text-sm leading-relaxed text-muted">
+          Companies report their results four times a year, and prices often jump when they do. In a week
+          that contains a report, the engine raises its prediction according to how much that stock moved
+          after its earlier reports, and the stock page shows the report date so you can see why a
+          prediction is higher than usual.
+        </p>
       </section>
 
       <section aria-labelledby="read-heading" className="mt-10">

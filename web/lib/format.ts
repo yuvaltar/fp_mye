@@ -99,6 +99,14 @@ export function formatDate(iso: string): string {
   return `${Number(match[3])} ${month} ${match[1]}`;
 }
 
+/** "2026-10-07" -> "Oct 2026". Axis labels for ranges longer than a year. */
+export function formatMonthYear(iso: string): string {
+  const full = formatDate(iso);
+  if (full === iso) return iso;
+  const [, month, year] = full.split(" ");
+  return `${month} ${year}`;
+}
+
 /** "2026-10-07" -> "7 Oct". Compact form for chart axes. */
 export function formatDateShort(iso: string): string {
   const full = formatDate(iso);

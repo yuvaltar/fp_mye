@@ -1,97 +1,44 @@
-# Proposed contract additions (from /web)
+# Contract v2: what was agreed, and who builds what
 
-Status: **proposal, not agreed**. Nothing here is in `contracts/prediction.schema.json` yet. The website is already built against these shapes (types in `web/lib/api/proposed-types.ts`) and shows clearly labelled "Sample data" in mock mode. In live mode, if an endpoint answers anything other than 200, the matching section shows a "not available yet" note and the rest of the site works normally.
+Status: **agreed in principle** between the two teams (message from Yuval, 2026-10-13). The schema, the mocks and the website side are on the branch `contract-v2-web`; the engine side (the endpoints themselves) is built by Yuval. One PR updates the schema, the mocks and both sides, and both teams approve it before it goes to `main`.
 
-If both teams agree, the change goes in one PR that updates the schema, adds the mock files and implements the endpoints (per the root `CLAUDE.md`). Unknown ticker returns 404 `{ "detail": "..." }`, like the existing endpoints.
+The authoritative definitions are in `contracts/prediction.schema.json` and `contracts/README.md` ("Version 2 additions"). This file is the work split and the checklist.
 
-## 1. `GET /prices?ticker=XXX` (price and price chart)
+## What v2 adds (all optional for a v1 server: the site hides what it cannot fill)
 
-```json
-{
-  "ticker": "AAPL",
-  "currency": "USD",
-  "last_close": 227.52,
-  "last_close_date": "2026-10-07",
-  "points": [{ "date": "2026-07-15", "close": 224.10 }]
-}
-```
+| Addition | Shape | Why |
+| --- | --- | --- |
+| `GET /overview` | `OverviewResponse`: one entry per ticker with a prediction (`predicted_vol`, `baseline_vol`, `supervisor_confidence`, `latest_realized_vol`, `earnings_date`) | The watchlist takes one request instead of two per ticker (about 100 requests and 10 MB for 52 tickers) |
+| `GET /weights?ticker=` | `WeightsHistoryResponse`: weights per skill per date, same dates as `/history`, summing to 1; the last point equals `/predict` | The "skill weights over time" chart: how the supervisor shifts trust |
+| `GET /performance` | `PerformanceResponse`: QLIKE headline (supervisor vs HAR-RV, tickers better, t-statistic), a table of models (RMSE, MAE, QLIKE, `*_vs_har_rv`), average weights, per-ticker QLIKE | The Performance page, with the numbers of `docs/backtest.md` |
+| `sector` on `/tickers` items | optional string (GICS sector) | Sector filter in the watchlist |
+| `earnings_date` on `/predict` and `/overview` entries | `YYYY-MM-DD` when the company reports inside the 5 days the prediction covers, else `null`; absent = not reported | The site explains why a prediction jumped in an earnings week |
+| ~~`GET /prices`~~ | dropped | The site gets prices from Yahoo Finance itself |
 
-- `points` oldest first, daily closes (about the last 90 trading days is enough), same data the yfinance loader already fetches.
-- Prices are plain numbers in the listing currency, not decimals-as-percent.
+## Engine side (Yuval): what the site expects
 
-## 2. `GET /weights?ticker=XXX` (supervisor weights over time)
+1. Implement the three endpoints, `sector`, and `earnings_date`, exactly as in the schema. `/performance` and `/overview` can be computed from `artifacts/predictions.csv` (a throw-away harness did this for the site's tests: the QLIKE, RMSE, MAE, 88,140 scored predictions, 1,695 dates and 52/52 tickers all reproduce `docs/backtest.md` exactly).
+2. Names in `/performance.models`: `supervisor`, `har_rv` (the baseline row, which is the same as skill `short_term`), the other skills by their names (`regime`, `weak_signals`, `itransformer`), and the baselines `naive` and `equal_weight`. The `*_vs_har_rv` fields are decimals (0.109 = 10.9%), `null` on `har_rv`.
+3. `/performance.headline.t_statistic`: use the overlap-corrected one from the report (4.75); the harness's Newey-West version gave 5.08, so the corrections differ.
+4. Add tests for the new definitions to `algo/tests/test_contract.py` and `test_api.py` (the existing 17 contract and API tests pass unchanged against the new schema).
+5. The 21.9% result (earnings layer) is an experiment so far: `artifacts/` still hold the Step 11 run (10.9% vs HAR-RV). The site shows whatever `/performance` returns, so after the backtest is re-run with the layer in the pipeline the numbers update by themselves.
 
-```json
-{
-  "ticker": "AAPL",
-  "skills": [{ "name": "short_trend", "horizon": "short" }],
-  "points": [
-    {
-      "as_of_date": "2026-09-17",
-      "weights": [{ "name": "short_trend", "weight": 0.34 }]
-    }
-  ]
-}
-```
+## Website side (Maor): done on this branch
 
-- One entry per `as_of_date` that appears in `/history`, oldest first.
-- On every date the weights sum to 1 (same rule as `/predict`), and the last point equals the weights in `/predict`.
-- A separate endpoint, because `HistoryPoint` has `additionalProperties: false` and adding fields there would break existing validation.
+- Types mirror the new definitions; mocks for every new definition (`mock_overview.json`, `mock_weights.json`, `mock_performance.json`; `sector` and `earnings_date` in the existing ones).
+- Watchlist uses `/overview` when present (falls back to per-ticker requests); earnings tag and "Earnings this week" filter; sector filter.
+- Stock page: earnings notice, real weights chart (range selector, weekly sampling for "All"), unchanged elsewhere.
+- Performance page: QLIKE headline sentence, model table with QLIKE first and `vs HAR-RV` from the API, weights, per-ticker table, caveats.
+- `itransformer` has a label, a description and a stable color; the volatility scale says "52 large stocks".
 
-## 3. `GET /performance` (backtest summary)
+## Not part of the contract
 
-```json
-{
-  "generated_at": "2026-10-08",
-  "period_start": "2025-10-08",
-  "period_end": "2026-10-07",
-  "evaluation_dates": 250,
-  "tickers": ["AAPL", "TEVA", "NVDA"],
-  "models": [
-    { "name": "supervisor", "kind": "supervisor", "rmse": 0.0412, "mae": 0.0301, "qlike": 0.118 }
-  ],
-  "skill_weights": [{ "name": "short_trend", "mean": 0.34, "min": 0.12, "max": 0.55 }]
-}
-```
+- Prices, the price chart, the market snapshot and the realized volatility computed from real closes come from Yahoo Finance (`NEXT_PUBLIC_LIVE_MARKET_DATA=true`), server-side only.
+- Scaling to the S&P 500 (503 tickers) is not practical for the engine before the freeze (the backtest takes about 40 minutes at 52 tickers). In mock mode the site lists all 503 with real names and sectors and shows predictions only where the engine has them.
+- Symbols: the S&P list writes `BRK.B`; Yahoo and `config.py` use `BRK-B`. The site maps dots to dashes when it asks Yahoo.
 
-- `models`: the supervisor, every skill, and the baselines `har_rv`, `naive`, `equal_weight`. `kind` is `supervisor`, `skill` or `baseline`. All models scored on the same dates.
-- Same numbers as the generated `docs/backtest.md`. Errors are on volatility as decimals (like the rest of the contract); the site shows them with 4 decimals.
+## Order of merging
 
-## 4. Scaling to the S&P 500 (about 500 tickers)
-
-The watchlist now lists the full S&P 500 (503 tickers, 11 sectors; a snapshot of the public dataset `datasets/s-and-p-500-companies`, bundled in `web/lib/api/sp500.ts` for mock mode). In live mode the list comes from `GET /tickers`. Two additions make that practical:
-
-**4a. `GET /tickers` items get an optional `sector`** (GICS sector, e.g. `"Information Technology"`). This is a schema change (`additionalProperties: false` on the item today). The site shows a sector filter only when sectors are present.
-
-**4b. `GET /overview`** so the watchlist does not need 2 requests per ticker (about 1000 for the S&P 500):
-
-```json
-{
-  "entries": [
-    {
-      "ticker": "AAPL",
-      "as_of_date": "2026-10-07",
-      "predicted_vol": 0.2251,
-      "baseline_vol": 0.212,
-      "supervisor_confidence": 0.74,
-      "latest_realized_vol": 0.2106
-    }
-  ]
-}
-```
-
-- One entry per ticker that has a prediction; tickers without one are simply absent (the site lists them as "No prediction yet").
-- `latest_realized_vol` is the latest non-null `realized_vol` from that ticker's `/history` (or `null`); the trend badge compares the prediction with it.
-- Without `/overview` the site loads only the first 30 tickers individually and lists the rest without numbers.
-
-**4c. (optional) `GET /history?ticker=XXX&days=N`** to return only the last N calendar days. Each `/history` response has about 2,200 points (roughly 200 KB); the watchlist only needs the last 20 and the stock page 6 months by default. Without it the site works, just heavier.
-
-For the engine side (not a contract matter, but it affects everyone):
-
-- **Data coverage:** real predictions for 500 tickers need the loader and backtest to cover them; plan for download time and yfinance rate limits (cache locally, fetch in batches).
-- **Ticker symbols:** the S&P list writes `BRK.B` and `BF.B`; Yahoo Finance uses `BRK-B` and `BF-B`. The contract's `Ticker` pattern accepts both; the team should pick one and map the other.
-- **TEVA is not in the S&P 500** (it is the project's Israeli example). It stays in the mock files, so mock mode lists the S&P 500 plus TEVA.
-
-## Message to send to Elie and Yuval
-
-> היי, האתר כבר בנוי על ה-mocks ומציג את כל 500 החברות של S&P 500 (שמות וסקטורים). כדי שיהיו גם חיזויים אמיתיים, אנחנו מציעים להוסיף ל-contract: `GET /overview` (נתוני הרשימה לכל המניות בקריאה אחת, במקום 1000 קריאות), שדה אופציונלי `sector` ב-`/tickers`, ועוד שלושה endpoints אופציונליים: מחיר וגרף מחיר, משקלי ה-skills לאורך זמן, ותוצאות ה-backtest. הפירוט המלא והצורות המדויקות ב-`docs/proposed-contract-additions.md`. האתר ממשיך לעבוד גם בלי זה, אז אין לחץ. שימו לב שהמנוע צריך להתמודד עם 500 טיקרים (הורדת נתונים בקבוצות ו-cache), ושב-Yahoo הסימול הוא `BRK-B` ולא `BRK.B`. אם מסכימים, נעשה PR אחד שמעדכן סכמה, mocks ומימוש בשני הצדדים.
+1. Yuval builds his side on his own branch and tells Maor when it is pushed.
+2. Maor merges the two (this branch + Yuval's) so that one branch has the schema, the mocks, the engine and the site, and runs the integration checkpoint: all endpoints validate against the schema, the site shows live data for every ticker, an unknown ticker is a 404 with a clear message, `pytest`, `npm run build` and `npm run typecheck` pass.
+3. One PR into `main`, approved by both.

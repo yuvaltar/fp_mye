@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { PricesResponse } from "@/lib/api/proposed-types";
+import type { PricesResponse } from "@/lib/api/extras-types";
 import { priceChange, sliceByDays } from "@/lib/derive";
 import { formatDate, formatDateShort, formatPrice, formatSignedPercent } from "@/lib/format";
 import { RangeSelector, type RangeOption } from "./RangeSelector";

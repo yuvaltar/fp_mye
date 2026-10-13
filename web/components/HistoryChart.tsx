@@ -11,8 +11,8 @@ import {
   YAxis,
 } from "recharts";
 import type { HistoryPoint } from "@/lib/api/types";
-import { downsampleWeekly, sliceByDays } from "@/lib/derive";
-import { formatDate, formatDateShort, formatVol, historyToCsv } from "@/lib/format";
+import { AXIS_YEAR_THRESHOLD_DAYS, downsampleWeekly, sliceByDays, spanDays } from "@/lib/derive";
+import { formatDate, formatDateShort, formatMonthYear, formatVol, historyToCsv } from "@/lib/format";
 import { RangeSelector, type RangeOption } from "./RangeSelector";
 import { StateMessage } from "./StateMessage";
 
@@ -64,6 +64,12 @@ export function HistoryChart({ ticker, points }: HistoryChartProps) {
   }
 
   const pending = points.filter((p) => p.realized_vol === null).length;
+  const first = shown[0];
+  const last = shown[shown.length - 1];
+  const longRange =
+    first !== undefined &&
+    last !== undefined &&
+    spanDays(first.as_of_date, last.as_of_date) > AXIS_YEAR_THRESHOLD_DAYS;
 
   function toggle(key: SeriesKey) {
     const next = new Set(hidden);
@@ -128,7 +134,11 @@ export function HistoryChart({ ticker, points }: HistoryChartProps) {
         <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 640, height: 288 }}>
           <LineChart data={shown} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
             <CartesianGrid vertical={false} />
-            <XAxis dataKey="as_of_date" tickFormatter={formatDateShort} minTickGap={24} />
+            <XAxis
+              dataKey="as_of_date"
+              tickFormatter={longRange ? formatMonthYear : formatDateShort}
+              minTickGap={longRange ? 48 : 24}
+            />
             <YAxis
               width={52}
               tickFormatter={formatVol}

@@ -1,4 +1,4 @@
-import type { PricesResponse } from "@/lib/api/proposed-types";
+import type { PricesResponse } from "@/lib/api/extras-types";
 import { realizedVolFromCloses } from "@/lib/derive";
 import { formatDateTimeUtc, formatPrice, formatVol, formatVolume } from "@/lib/format";
 import { LivePrice } from "./LivePrice";

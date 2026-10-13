@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ConfidenceMeter } from "@/components/ConfidenceMeter";
+import { EarningsNotice } from "@/components/EarningsNotice";
 import { HistoryChart } from "@/components/HistoryChart";
 import { InsightsPanel } from "@/components/InsightsPanel";
 import { MarketSnapshot } from "@/components/MarketSnapshot";
@@ -111,6 +112,8 @@ export default async function StockPage({ params }: { params: Promise<{ ticker: 
           From the engine&apos;s latest run, with prices up to the {formatDate(p.as_of_date)} close.
         </p>
       </div>
+
+      {p.earnings_date ? <EarningsNotice date={p.earnings_date} /> : null}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard

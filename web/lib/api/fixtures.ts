@@ -1,14 +1,11 @@
 /**
- * SAMPLE data for the proposed endpoints, used only in mock mode and always
- * shown with a "Sample data" label. Deterministic: the same input gives the
- * same output. Not engine output and not real prices.
+ * SAMPLE prices, used only in mock mode when real market data is switched
+ * off, always shown with a "Sample data" label. Deterministic: the same input
+ * gives the same output. Not real prices. (Weights and performance examples
+ * live in /contracts as mock files.)
  */
 import type { Prediction } from "./types.ts";
-import type {
-  PerformanceResponse,
-  PricesResponse,
-  WeightsHistoryResponse,
-} from "./proposed-types.ts";
+import type { PricesResponse } from "./extras-types.ts";
 
 /** Small seeded generator (mulberry32) so samples are stable between runs. */
 export function seededRandom(seed: number): () => number {
@@ -68,62 +65,5 @@ export function samplePrices(prediction: Prediction, days = 90): PricesResponse 
     last_close: last?.close ?? close,
     last_close_date: last?.date ?? prediction.as_of_date,
     points,
-  };
-}
-
-/** Skill weights drifting around today's weights, always summing to 1. */
-export function sampleWeightsHistory(
-  prediction: Prediction,
-  dates: readonly string[],
-): WeightsHistoryResponse {
-  const random = seededRandom(hashString(`weights:${prediction.ticker}`));
-  const base = prediction.skills.map((skill) => skill.weight);
-  let current = base.map((weight) => Math.max(0.05, weight + (random() - 0.5) * 0.3));
-  const points = dates.map((date, index) => {
-    const isLast = index === dates.length - 1;
-    current = current.map((weight, i) =>
-      Math.max(0.03, weight + (((base[i] ?? weight) - weight) * 0.15 + (random() - 0.5) * 0.08)),
-    );
-    const source = isLast ? base : current;
-    const total = source.reduce((sum, weight) => sum + weight, 0);
-    return {
-      as_of_date: date,
-      weights: prediction.skills.map((skill, i) => ({
-        name: skill.name,
-        weight: (source[i] ?? 0) / total,
-      })),
-    };
-  });
-  return {
-    ticker: prediction.ticker,
-    skills: prediction.skills.map(({ name, horizon }) => ({ name, horizon })),
-    points,
-  };
-}
-
-/** Example backtest summary. Numbers are illustrative, not measured. */
-export function samplePerformance(): PerformanceResponse {
-  return {
-    generated_at: "2026-10-08",
-    period_start: "2025-10-08",
-    period_end: "2026-10-07",
-    evaluation_dates: 250,
-    tickers: ["AAPL", "TEVA", "NVDA"],
-    models: [
-      { name: "supervisor", kind: "supervisor", rmse: 0.0412, mae: 0.0301, qlike: 0.118 },
-      { name: "short_term", kind: "skill", rmse: 0.0455, mae: 0.0334, qlike: 0.131 },
-      { name: "regime", kind: "skill", rmse: 0.0468, mae: 0.0342, qlike: 0.136 },
-      { name: "weak_signals", kind: "skill", rmse: 0.0489, mae: 0.0361, qlike: 0.142 },
-      { name: "multivariate", kind: "skill", rmse: 0.0521, mae: 0.0389, qlike: 0.151 },
-      { name: "equal_weight", kind: "baseline", rmse: 0.0436, mae: 0.0319, qlike: 0.126 },
-      { name: "har_rv", kind: "baseline", rmse: 0.0449, mae: 0.0328, qlike: 0.129 },
-      { name: "naive", kind: "baseline", rmse: 0.0503, mae: 0.0372, qlike: 0.147 },
-    ],
-    skill_weights: [
-      { name: "short_term", mean: 0.34, min: 0.12, max: 0.55 },
-      { name: "regime", mean: 0.27, min: 0.08, max: 0.44 },
-      { name: "weak_signals", mean: 0.22, min: 0.05, max: 0.47 },
-      { name: "multivariate", mean: 0.17, min: 0.04, max: 0.31 },
-    ],
   };
 }

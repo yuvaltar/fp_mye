@@ -27,6 +27,7 @@ function row(
     confidence: predicted,
     asOfDate: "2026-10-07",
     trend,
+    earningsDate: null,
     spark: [predicted],
   };
 }

@@ -2,15 +2,18 @@
   "tickers": [
     {
       "ticker": "AAPL",
-      "name": "Apple Inc."
+      "name": "Apple Inc.",
+      "sector": "Information Technology"
     },
     {
       "ticker": "TEVA",
-      "name": "Teva Pharmaceutical Industries Ltd."
+      "name": "Teva Pharmaceutical Industries Ltd.",
+      "sector": "Health Care"
     },
     {
       "ticker": "NVDA",
-      "name": "NVIDIA Corporation"
+      "name": "NVIDIA Corporation",
+      "sector": "Information Technology"
     }
   ]
 }

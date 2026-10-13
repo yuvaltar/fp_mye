@@ -1,17 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { ModelPerformance, PricePoint, WeightsPoint } from "./api/proposed-types.ts";
-import type { HistoryPoint, SkillPrediction } from "./api/types.ts";
+import type { PricePoint } from "./api/extras-types.ts";
+import type { HistoryPoint, ModelPerformance, SkillPrediction, WeightsPoint } from "./api/types.ts";
 import {
   MIN_SCORED_POINTS,
   accuracyStats,
   bestModels,
-  improvementVs,
   lastN,
   modelLabel,
+  performanceSentence,
   priceChange,
   skillSpread,
   sparklinePath,
+  tickerImprovement,
   volPercentile,
   weightsToRows,
 } from "./derive.ts";
@@ -105,8 +106,8 @@ test("weightsToRows flattens weights per date", () => {
 });
 
 const MODELS: ModelPerformance[] = [
-  { name: "supervisor", kind: "supervisor", rmse: 0.04, mae: 0.03, qlike: 0.12 },
-  { name: "har_rv", kind: "baseline", rmse: 0.05, mae: 0.03, qlike: 0.15 },
+  { name: "supervisor", kind: "supervisor", rmse: 0.04, mae: 0.03, qlike: 0.12, rmse_vs_har_rv: 0.2, mae_vs_har_rv: 0, qlike_vs_har_rv: 0.2 },
+  { name: "har_rv", kind: "baseline", rmse: 0.05, mae: 0.03, qlike: 0.15, rmse_vs_har_rv: null, mae_vs_har_rv: null, qlike_vs_har_rv: null },
 ];
 
 test("bestModels returns the lowest, including ties", () => {
@@ -115,11 +116,29 @@ test("bestModels returns the lowest, including ties", () => {
   assert.deepEqual(bestModels([], "rmse"), []);
 });
 
-test("improvementVs", () => {
-  const [supervisor, harRv] = MODELS as [ModelPerformance, ModelPerformance];
-  assert.ok(Math.abs((improvementVs(supervisor, harRv, "rmse") ?? 0) - 0.2) < 1e-9);
-  assert.equal(improvementVs(harRv, harRv, "rmse"), 0);
-  assert.equal(improvementVs(supervisor, { ...harRv, rmse: 0 }, "rmse"), null);
+test("tickerImprovement is 1 - supervisor / baseline", () => {
+  assert.ok(Math.abs((tickerImprovement({ ticker: "AAPL", supervisor_qlike: 0.4267, baseline_qlike: 0.4675 }) ?? 0) - 0.0873) < 1e-3);
+  assert.equal(tickerImprovement({ ticker: "X", supervisor_qlike: 0.5, baseline_qlike: 0 }), null);
+  assert.ok((tickerImprovement({ ticker: "X", supervisor_qlike: 0.6, baseline_qlike: 0.5 }) ?? 0) < 0);
+});
+
+const HEADLINE = { metric: "qlike", supervisor: 0.4862, baseline: 0.546, improvement: 0.1095, tickers_better: 52, tickers_total: 52, t_statistic: 4.75 } as const;
+
+test("performanceSentence: a solid win says so, with the numbers", () => {
+  assert.equal(
+    performanceSentence(HEADLINE),
+    "The supervisor beats the HAR-RV baseline on QLIKE: 0.4862 against 0.5460 (+10.9%), and is better than HAR-RV on 52 of 52 tickers. The difference is statistically solid (t-statistic 4.75; about 2 or more is the usual bar).",
+  );
+});
+
+test("performanceSentence: a loss or weak evidence is not dressed up", () => {
+  const worse = performanceSentence({ ...HEADLINE, supervisor: 0.6, improvement: -0.0989, tickers_better: 10, t_statistic: 1.2 });
+  assert.match(worse, /^The supervisor does not beat the HAR-RV baseline on QLIKE: 0\.6000 against 0\.5460 \(-9\.9%\)/);
+  assert.match(worse, /better than HAR-RV on 10 of 52 tickers/);
+  assert.match(worse, /The evidence is weak \(t-statistic 1\.20, below the usual bar of about 2\), so the difference could be chance\.$/);
+  const weakWin = performanceSentence({ ...HEADLINE, t_statistic: 1.5 });
+  assert.match(weakWin, /^The supervisor beats/);
+  assert.match(weakWin, /could be chance/);
 });
 
 test("modelLabel", () => {

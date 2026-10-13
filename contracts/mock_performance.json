@@ -1,0 +1,141 @@
+{
+  "generated_at": "2026-10-13",
+  "model_version": "0.1.0-mock",
+  "period_start": "2020-01-02",
+  "period_end": "2026-09-30",
+  "evaluation_dates": 1695,
+  "scored_predictions": 5085,
+  "tickers": [
+    "AAPL",
+    "TEVA",
+    "NVDA"
+  ],
+  "headline": {
+    "metric": "qlike",
+    "supervisor": 0.4862,
+    "baseline": 0.546,
+    "improvement": 0.1095,
+    "tickers_better": 3,
+    "tickers_total": 3,
+    "t_statistic": 4.75
+  },
+  "models": [
+    {
+      "name": "supervisor",
+      "kind": "supervisor",
+      "rmse": 0.1704,
+      "mae": 0.1152,
+      "qlike": 0.4862,
+      "rmse_vs_har_rv": 0.071,
+      "mae_vs_har_rv": 0.06,
+      "qlike_vs_har_rv": 0.109
+    },
+    {
+      "name": "har_rv",
+      "kind": "baseline",
+      "rmse": 0.1834,
+      "mae": 0.1225,
+      "qlike": 0.546,
+      "rmse_vs_har_rv": null,
+      "mae_vs_har_rv": null,
+      "qlike_vs_har_rv": null
+    },
+    {
+      "name": "regime",
+      "kind": "skill",
+      "rmse": 0.1793,
+      "mae": 0.1198,
+      "qlike": 0.5342,
+      "rmse_vs_har_rv": 0.022,
+      "mae_vs_har_rv": 0.022,
+      "qlike_vs_har_rv": 0.022
+    },
+    {
+      "name": "weak_signals",
+      "kind": "skill",
+      "rmse": 0.1747,
+      "mae": 0.1145,
+      "qlike": 0.4885,
+      "rmse_vs_har_rv": 0.048,
+      "mae_vs_har_rv": 0.065,
+      "qlike_vs_har_rv": 0.105
+    },
+    {
+      "name": "itransformer",
+      "kind": "skill",
+      "rmse": 0.1731,
+      "mae": 0.1166,
+      "qlike": 0.4888,
+      "rmse_vs_har_rv": 0.056,
+      "mae_vs_har_rv": 0.048,
+      "qlike_vs_har_rv": 0.105
+    },
+    {
+      "name": "naive",
+      "kind": "baseline",
+      "rmse": 0.1945,
+      "mae": 0.1249,
+      "qlike": 1.2482,
+      "rmse_vs_har_rv": -0.06,
+      "mae_vs_har_rv": -0.019,
+      "qlike_vs_har_rv": -1.286
+    },
+    {
+      "name": "equal_weight",
+      "kind": "baseline",
+      "rmse": 0.1706,
+      "mae": 0.1152,
+      "qlike": 0.4869,
+      "rmse_vs_har_rv": 0.07,
+      "mae_vs_har_rv": 0.06,
+      "qlike_vs_har_rv": 0.108
+    }
+  ],
+  "skill_weights": [
+    {
+      "name": "short_term",
+      "horizon": "short",
+      "mean": 0.242,
+      "min": 0.111,
+      "max": 0.301
+    },
+    {
+      "name": "regime",
+      "horizon": "long",
+      "mean": 0.245,
+      "min": 0.054,
+      "max": 0.311
+    },
+    {
+      "name": "weak_signals",
+      "horizon": "short",
+      "mean": 0.256,
+      "min": 0.171,
+      "max": 0.376
+    },
+    {
+      "name": "itransformer",
+      "horizon": "medium",
+      "mean": 0.257,
+      "min": 0.146,
+      "max": 0.467
+    }
+  ],
+  "per_ticker": [
+    {
+      "ticker": "AAPL",
+      "supervisor_qlike": 0.4267,
+      "baseline_qlike": 0.4675
+    },
+    {
+      "ticker": "TEVA",
+      "supervisor_qlike": 0.5908,
+      "baseline_qlike": 0.6266
+    },
+    {
+      "ticker": "NVDA",
+      "supervisor_qlike": 0.3922,
+      "baseline_qlike": 0.4252
+    }
+  ]
+}

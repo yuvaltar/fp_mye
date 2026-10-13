@@ -25,6 +25,8 @@ export type WatchlistRow =
       confidence: number;
       asOfDate: string;
       trend: Trend;
+      /** Earnings report date inside the 5 days the prediction covers, or null. */
+      earningsDate: string | null;
       /** Recent predicted volatilities, oldest first. Empty when not available. */
       spark: number[];
     })

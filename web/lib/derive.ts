@@ -4,13 +4,16 @@
  * the response and never state a reason the data does not contain.
  * Imports are relative with .ts extensions so node:test can run this file.
  */
+import type { PricePoint } from "./api/extras-types.ts";
 import type {
+  HistoryPoint,
   ModelPerformance,
-  PricePoint,
+  PerformanceHeadline,
+  SkillPrediction,
+  TickerPerformance,
   WeightsPoint,
-} from "./api/proposed-types.ts";
-import type { HistoryPoint, SkillPrediction } from "./api/types.ts";
-import { formatShare, formatVol } from "./format.ts";
+} from "./api/types.ts";
+import { formatMetric, formatShare, formatSignedPercent, formatVol } from "./format.ts";
 
 /** Relative gap vs the latest realized volatility that counts as a trend. */
 export const TREND_THRESHOLD = 0.1;
@@ -59,7 +62,7 @@ export function relativeDifference(value: number, reference: number): number | n
 
 /**
  * Display names for skills. The engine's real members are short_term (HAR-RV),
- * regime (GARCH), weak_signals (Boosting) and multivariate (iTransformer); the
+ * regime (GARCH), weak_signals (Boosting) and itransformer (our own iTransformer; it replaced multivariate); the
  * trend/seasonality names come from the contract mocks. Unknown names (for
  * example the coming iTransformer with a relationship map) fall back to
  * auto-formatting, so nothing here is a fixed list.
@@ -68,6 +71,7 @@ const KNOWN_SKILL_LABELS: Record<string, string> = {
   short_term: "HAR-RV",
   regime: "GARCH",
   weak_signals: "Boosting",
+  itransformer: "iTransformer",
   multivariate: "iTransformer",
   short_trend: "Short trend",
   medium_trend: "Medium trend",
@@ -79,6 +83,7 @@ const KNOWN_SKILL_INFO: Record<string, string> = {
   short_term: "A simple formula from yesterday's, this week's and this month's volatility.",
   regime: "A classic model: storms persist, then volatility drifts back to its average.",
   weak_signals: "Decision trees on trading volume, daily range and opening gaps.",
+  itransformer: "Our own deep network, which reads all the stocks together (average of three training runs).",
   multivariate: "A deep network that reads all the stocks together.",
 };
 
@@ -95,6 +100,7 @@ const KNOWN_SKILL_COLOR: Record<string, number> = {
   short_term: 0,
   weak_signals: 1,
   regime: 2,
+  itransformer: 3,
   multivariate: 3,
   short_trend: 0,
   medium_trend: 2,
@@ -272,8 +278,11 @@ export function skillSpread(skills: readonly SkillPrediction[]): SkillSpread | n
   return { minSkill: min, maxSkill: max, range: max.predicted_vol - min.predicted_vol };
 }
 
+/** Where the reference levels below come from; shown under the volatility scale. */
+export const VOL_REFERENCE_SOURCE = "the project's own data: 52 large stocks since 2018";
+
 /**
- * Volatility levels from the project's own data (10 large stocks since 2018):
+ * Volatility levels from the project's own data (52 large stocks since 2018):
  * a typical week is about 24%, a calm week is under 11%, a stormy week is over
  * 52% and crises exceed 100%. Decimals, like every volatility in the contract.
  */
@@ -313,6 +322,14 @@ export function sliceByDays<T>(
   const cutoff = isoToDay(dateOf(last)) - days;
   return items.filter((item) => isoToDay(dateOf(item)) >= cutoff);
 }
+
+/** Calendar days from one ISO date to another (negative when reversed). */
+export function spanDays(startIso: string, endIso: string): number {
+  return isoToDay(endIso) - isoToDay(startIso);
+}
+
+/** Above this many days a chart axis needs the year to be readable. */
+export const AXIS_YEAR_THRESHOLD_DAYS = 400;
 
 /**
  * One item per ISO week (the last of each week), so a multi-year history stays
@@ -405,15 +422,31 @@ export function bestModels(models: readonly ModelPerformance[], metric: MetricKe
   return models.filter((m) => m[metric] === lowest).map((m) => m.name);
 }
 
-/** Improvement of a model vs a reference on a metric: 0.08 = 8% lower error. */
-export function improvementVs(
-  model: ModelPerformance,
-  reference: ModelPerformance,
-  metric: MetricKey,
-): number | null {
-  const ref = reference[metric];
-  if (!Number.isFinite(ref) || ref <= 0) return null;
-  return 1 - model[metric] / ref;
+/** How much lower the supervisor's QLIKE is than HAR-RV's for one ticker: 0.08 = 8% lower. */
+export function tickerImprovement(row: TickerPerformance): number | null {
+  if (!Number.isFinite(row.baseline_qlike) || row.baseline_qlike <= 0) return null;
+  return 1 - row.supervisor_qlike / row.baseline_qlike;
+}
+
+/** The usual statistical bar: a t-statistic of about 2 or more. */
+export const T_STATISTIC_BAR = 2;
+
+/**
+ * One plain sentence for the backtest headline, built only from its numbers.
+ * Says so when the supervisor does not beat HAR-RV or when the evidence is
+ * below the usual bar.
+ */
+export function performanceSentence(headline: PerformanceHeadline): string {
+  const beats = headline.improvement > 0;
+  const comparison = `${formatMetric(headline.supervisor)} against ${formatMetric(headline.baseline)} (${formatSignedPercent(headline.improvement)})`;
+  const tickers = `better than HAR-RV on ${headline.tickers_better} of ${headline.tickers_total} tickers`;
+  const evidence =
+    headline.t_statistic >= T_STATISTIC_BAR
+      ? `The difference is statistically solid (t-statistic ${headline.t_statistic.toFixed(2)}; about ${T_STATISTIC_BAR} or more is the usual bar).`
+      : `The evidence is weak (t-statistic ${headline.t_statistic.toFixed(2)}, below the usual bar of about ${T_STATISTIC_BAR}), so the difference could be chance.`;
+  return beats
+    ? `The supervisor beats the HAR-RV baseline on QLIKE: ${comparison}, and is ${tickers}. ${evidence}`
+    : `The supervisor does not beat the HAR-RV baseline on QLIKE: ${comparison}, and is ${tickers}. ${evidence}`;
 }
 
 const MODEL_LABELS: Record<string, string> = {

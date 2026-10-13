@@ -6,6 +6,7 @@ import {
   getPrediction,
 } from "./api/client.ts";
 import {
+  AXIS_YEAR_THRESHOLD_DAYS,
   VOL_CALM_BELOW,
   VOL_CRISIS_ABOVE,
   VOL_STORMY_ABOVE,
@@ -14,8 +15,10 @@ import {
   skillDescription,
   skillLabel,
   sliceByDays,
+  spanDays,
   volLevel,
 } from "./derive.ts";
+import { formatMonthYear } from "./format.ts";
 import { loadWatchlist } from "./watchlist.ts";
 
 const originalFetch = globalThis.fetch;
@@ -115,4 +118,25 @@ test("watchlist: a 503 on predictions lists the tickers without numbers instead 
   };
   const { rows } = await loadWatchlist();
   assert.deepEqual(rows.map((r) => r.status), ["no-prediction"]);
+});
+
+test("spanDays counts calendar days and AXIS_YEAR_THRESHOLD_DAYS decides when axes need the year", () => {
+  assert.equal(spanDays("2026-10-01", "2026-10-08"), 7);
+  assert.equal(spanDays("2026-10-08", "2026-10-01"), -7);
+  assert.equal(spanDays("2018-01-02", "2026-10-07") > AXIS_YEAR_THRESHOLD_DAYS, true);
+  assert.equal(spanDays("2026-04-09", "2026-10-07") > AXIS_YEAR_THRESHOLD_DAYS, false);
+});
+
+test("formatMonthYear", () => {
+  assert.equal(formatMonthYear("2026-10-07"), "Oct 2026");
+  assert.equal(formatMonthYear("2018-01-02"), "Jan 2018");
+  assert.equal(formatMonthYear("garbage"), "garbage");
+});
+
+test("itransformer, the engine's own model, has a label, a description and a stable color", () => {
+  assert.equal(skillLabel("itransformer"), "iTransformer");
+  assert.ok(skillDescription("itransformer")?.includes("Our own"));
+  assert.equal(skillColorIndex("itransformer"), 3);
+  const real = ["short_term", "weak_signals", "regime", "itransformer"].map(skillColorIndex);
+  assert.equal(new Set(real).size, 4);
 });

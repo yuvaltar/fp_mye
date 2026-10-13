@@ -2,13 +2,18 @@ import { afterEach, beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   hashString,
-  samplePerformance,
   samplePrices,
-  sampleWeightsHistory,
   seededRandom,
   weekdaysEndingAt,
 } from "./fixtures.ts";
-import { NotFoundError, getPerformance, getPrices, getWeightsHistory, getPrediction } from "./client.ts";
+import {
+  NotFoundError,
+  getOverview,
+  getPerformance,
+  getPrediction,
+  getPrices,
+  getWeightsHistory,
+} from "./client.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -20,6 +25,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   delete process.env.NEXT_PUBLIC_USE_MOCKS;
   delete process.env.NEXT_PUBLIC_API_BASE_URL;
+  delete process.env.NEXT_PUBLIC_LIVE_MARKET_DATA;
 });
 
 test("seededRandom is deterministic and within [0, 1)", () => {
@@ -56,40 +62,49 @@ test("samplePrices is deterministic, positive and ends on the prediction date", 
   assert.ok(a.points.every((p) => p.close > 0));
 });
 
-test("sampleWeightsHistory sums to 1 on every date and ends at today's weights", async () => {
-  const prediction = await getPrediction("TEVA");
-  const dates = ["2026-09-30", "2026-10-01", "2026-10-02", "2026-10-05"];
-  const history = sampleWeightsHistory(prediction, dates);
-  assert.equal(history.points.length, dates.length);
-  for (const point of history.points) {
+test("mock mode: weights come from the contract mock, sum to 1 and end at /predict", async () => {
+  const result = await getWeightsHistory("nvda");
+  assert.ok(result.state === "available" && result.sample);
+  if (result.state !== "available") return;
+  const prediction = await getPrediction("NVDA");
+  for (const point of result.data.points) {
     const total = point.weights.reduce((sum, w) => sum + w.weight, 0);
-    assert.ok(Math.abs(total - 1) < 1e-9);
-    assert.ok(point.weights.every((w) => w.weight >= 0 && w.weight <= 1));
+    assert.ok(Math.abs(total - 1) < 1e-3, `${point.as_of_date} sums to ${total}`);
   }
-  const last = history.points[history.points.length - 1];
-  prediction.skills.forEach((skill, i) => {
-    assert.ok(Math.abs((last?.weights[i]?.weight ?? -1) - skill.weight) < 1e-9);
-  });
+  const last = result.data.points[result.data.points.length - 1];
+  assert.deepEqual(
+    last?.weights.map((w) => [w.name, w.weight]),
+    prediction.skills.map((s) => [s.name, s.weight]),
+  );
 });
 
-test("samplePerformance has a supervisor, HAR-RV and sensible weights", () => {
-  const perf = samplePerformance();
-  assert.ok(perf.models.some((m) => m.kind === "supervisor"));
-  assert.ok(perf.models.some((m) => m.name === "har_rv"));
-  const total = perf.skill_weights.reduce((sum, w) => sum + w.mean, 0);
-  assert.ok(Math.abs(total - 1) < 1e-9);
+test("mock mode: performance comes from the contract mock with QLIKE as the headline", async () => {
+  const result = await getPerformance();
+  assert.ok(result.state === "available" && result.sample);
+  if (result.state !== "available") return;
+  const { headline, models } = result.data;
+  assert.equal(headline.metric, "qlike");
+  assert.ok(Math.abs(headline.improvement - (1 - headline.supervisor / headline.baseline)) < 1e-3);
+  assert.ok(models.some((m) => m.kind === "supervisor"));
+  const baseline = models.find((m) => m.name === "har_rv");
+  assert.equal(baseline?.qlike_vs_har_rv, null);
 });
 
-test("mock mode: optional endpoints return sample data flagged as sample", async () => {
+test("mock mode: overview comes from the contract mock and carries earnings_date", async () => {
+  const result = await getOverview();
+  assert.ok(result.state === "available" && result.sample);
+  if (result.state !== "available") return;
+  assert.deepEqual(result.data.entries.map((e) => e.ticker), ["AAPL", "TEVA", "NVDA"]);
+  assert.equal(result.data.entries.find((e) => e.ticker === "TEVA")?.earnings_date, "2026-10-13");
+  assert.equal(result.data.entries.find((e) => e.ticker === "AAPL")?.earnings_date, null);
+});
+
+test("mock mode: prices are labelled sample data unless live market data is on", async () => {
   const prices = await getPrices("aapl");
   assert.ok(prices.state === "available" && prices.sample);
-  const weights = await getWeightsHistory("NVDA");
-  assert.ok(weights.state === "available" && weights.sample);
-  const perf = await getPerformance();
-  assert.ok(perf.state === "available" && perf.sample);
 });
 
-test("mock mode: optional endpoints still reject an unknown ticker", async () => {
+test("mock mode: an unknown ticker is rejected where a ticker is needed", async () => {
   await assert.rejects(getPrices("ZZZZ"), NotFoundError);
   await assert.rejects(getWeightsHistory("ZZZZ"), NotFoundError);
 });
@@ -97,9 +112,9 @@ test("mock mode: optional endpoints still reject an unknown ticker", async () =>
 test("live mode: a missing endpoint (404) means unavailable, not an error", async () => {
   process.env.NEXT_PUBLIC_USE_MOCKS = "false";
   globalThis.fetch = async () => new Response("{}", { status: 404 });
-  assert.deepEqual(await getPrices("AAPL"), { state: "unavailable" });
   assert.deepEqual(await getWeightsHistory("AAPL"), { state: "unavailable" });
   assert.deepEqual(await getPerformance(), { state: "unavailable" });
+  assert.deepEqual(await getOverview(), { state: "unavailable" });
 });
 
 test("live mode: network failure also means unavailable", async () => {
@@ -110,15 +125,31 @@ test("live mode: network failure also means unavailable", async () => {
   assert.deepEqual(await getPerformance(), { state: "unavailable" });
 });
 
-test("live mode: a working endpoint returns real, non-sample data", async () => {
+test("live mode: an answer that is not shaped like an overview counts as missing", async () => {
+  process.env.NEXT_PUBLIC_USE_MOCKS = "false";
+  globalThis.fetch = async () => new Response(JSON.stringify({ something: "else" }), { status: 200 });
+  assert.deepEqual(await getOverview(), { state: "unavailable" });
+});
+
+test("live mode: working endpoints return real, non-sample data from the right URL", async () => {
   process.env.NEXT_PUBLIC_USE_MOCKS = "false";
   process.env.NEXT_PUBLIC_API_BASE_URL = "http://api.test";
   const urls: string[] = [];
   globalThis.fetch = async (input) => {
     urls.push(String(input));
-    return new Response(JSON.stringify({ ticker: "AAPL", currency: "USD", last_close: 1, last_close_date: "2026-10-07", points: [] }), { status: 200 });
+    return new Response(JSON.stringify({ ticker: "AAPL", skills: [], points: [], entries: [] }), { status: 200 });
   };
-  const result = await getPrices("aapl");
-  assert.ok(result.state === "available" && !result.sample);
-  assert.deepEqual(urls, ["http://api.test/prices?ticker=AAPL"]);
+  const weights = await getWeightsHistory("aapl");
+  assert.ok(weights.state === "available" && !weights.sample);
+  const overview = await getOverview();
+  assert.ok(overview.state === "available" && !overview.sample);
+  assert.deepEqual(urls, ["http://api.test/weights?ticker=AAPL", "http://api.test/overview"]);
+});
+
+test("live mode: the engine has no /prices, so prices are unavailable without market data", async () => {
+  process.env.NEXT_PUBLIC_USE_MOCKS = "false";
+  globalThis.fetch = async () => {
+    throw new Error("the engine must not be asked for /prices");
+  };
+  assert.deepEqual(await getPrices("AAPL"), { state: "unavailable" });
 });

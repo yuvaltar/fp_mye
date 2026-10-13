@@ -213,34 +213,23 @@ test("getPrices in mock mode: real market data when enabled, sample otherwise", 
   assert.ok(fallback.state === "available" && fallback.sample);
 });
 
-test("getPrices in live mode prefers the engine's /prices over market data", async () => {
+
+test("getPrices in live mode uses only the market source (the engine has no /prices)", async () => {
   process.env.NEXT_PUBLIC_USE_MOCKS = "false";
   process.env.NEXT_PUBLIC_LIVE_MARKET_DATA = "true";
   const urls: string[] = [];
   globalThis.fetch = async (input) => {
     urls.push(String(input));
-    if (String(input).includes("/prices")) {
-      return new Response(
-        JSON.stringify({ ticker: "AAPL", currency: "USD", last_close: 1, last_close_date: "2026-10-07", points: [] }),
-        { status: 200 },
-      );
-    }
     return new Response(JSON.stringify(chart()), { status: 200 });
   };
   const result = await getPrices("AAPL");
-  assert.ok(result.state === "available" && !result.sample && result.source === undefined);
+  assert.ok(result.state === "available" && result.source === "market" && !result.sample);
   assert.equal(urls.length, 1);
-});
+  assert.match(urls[0] ?? "", /query1\.finance\.yahoo\.com/);
 
-test("getPrices in live mode falls back to market data when the engine has no /prices", async () => {
-  process.env.NEXT_PUBLIC_USE_MOCKS = "false";
-  process.env.NEXT_PUBLIC_LIVE_MARKET_DATA = "true";
-  globalThis.fetch = async (input) =>
-    String(input).includes("/prices")
-      ? new Response("{}", { status: 404 })
-      : new Response(JSON.stringify(chart()), { status: 200 });
-  const result = await getPrices("AAPL");
-  assert.ok(result.state === "available" && result.source === "market");
+  // Market source down: no prices, no error.
+  globalThis.fetch = async () => new Response("{}", { status: 500 });
+  assert.deepEqual(await getPrices("AAPL"), { state: "unavailable" });
 
   delete process.env.NEXT_PUBLIC_LIVE_MARKET_DATA;
   assert.deepEqual(await getPrices("AAPL"), { state: "unavailable" });
