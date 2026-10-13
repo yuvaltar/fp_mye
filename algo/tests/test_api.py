@@ -33,9 +33,9 @@ def artifacts(tmp_path, monkeypatch):
     pd.DataFrame(rows).to_csv(tmp_path / "predictions.csv", index=False)
     (tmp_path / "meta.json").write_text(json.dumps({"model_version": "0.0.0-test", "skills": SKILLS}))
     monkeypatch.setattr(api, "ARTIFACTS_DIR", tmp_path)
-    api._store.cache_clear()
+    api.clear_cache()
     yield
-    api._store.cache_clear()
+    api.clear_cache()
 
 
 def test_predict_matches_contract():

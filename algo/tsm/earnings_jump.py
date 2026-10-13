@@ -44,20 +44,47 @@ def trading_calendar(days: pd.DatetimeIndex, extra: int = CALENDAR_EXTENSION) ->
     return days.append(pd.bdate_range(days[-1] + pd.offsets.BDay(1), periods=extra))
 
 
-def reaction_positions(releases: pd.DataFrame, calendar: pd.DatetimeIndex) -> dict[str, np.ndarray]:
-    """Per ticker, the sorted calendar positions of its reaction days.
+def release_reactions(releases: pd.DataFrame, calendar: pd.DatetimeIndex) -> pd.DataFrame:
+    """One row per release inside the calendar: ``ticker``, ``report_date`` and its ``reaction`` position.
 
-    ``releases`` has ``ticker``, ``date`` (midnight) and ``timing``.
+    ``releases`` has ``ticker``, ``date`` (midnight) and ``timing``. The one place
+    the reaction-day rule is applied.
     """
-    out = {}
     inside = releases[(releases["date"] >= calendar[0]) & (releases["date"] <= calendar[-1])]
-    for ticker, group in inside.groupby("ticker"):
-        first = to_trading_day(group["date"], calendar)
-        on_trading_day = calendar[np.minimum(first, len(calendar) - 1)] == group["date"].to_numpy()
-        after_close = (group["timing"].to_numpy() == "after_close") & on_trading_day
-        positions = first + after_close.astype(int)
-        out[ticker] = np.unique(positions[positions < len(calendar)])
-    return out
+    first = to_trading_day(inside["date"], calendar)
+    on_trading_day = calendar[np.minimum(first, len(calendar) - 1)] == inside["date"].to_numpy()
+    after_close = (inside["timing"].to_numpy() == "after_close") & on_trading_day
+    out = pd.DataFrame(
+        {"ticker": inside["ticker"].to_numpy(), "report_date": inside["date"].to_numpy(), "reaction": first + after_close}
+    )
+    return out[out["reaction"] < len(calendar)].reset_index(drop=True)
+
+
+def reaction_positions(releases: pd.DataFrame, calendar: pd.DatetimeIndex) -> dict[str, np.ndarray]:
+    """Per ticker, the sorted calendar positions of its reaction days."""
+    reactions = release_reactions(releases, calendar)
+    return {ticker: np.unique(group["reaction"].to_numpy()) for ticker, group in reactions.groupby("ticker")}
+
+
+def earnings_artifact(frame: pd.DataFrame, releases: pd.DataFrame, calendar: pd.DatetimeIndex) -> pd.DataFrame:
+    """``ticker``, ``report_date``, ``reaction_date`` for every reaction day an earnings week of ``frame`` refers to.
+
+    The API's ``earnings_date`` is the day the company publishes its report; for an
+    after-close report that is the trading day before the reaction day.
+    ``predictions.csv`` only holds the reaction day and the earnings files are not
+    committed, so the backtest writes this small table next to the predictions
+    (``artifacts/earnings.csv``) and the API reads it from there.
+    """
+    table = release_reactions(releases, calendar)
+    table["reaction_date"] = calendar[table["reaction"].to_numpy()]
+    used = frame.loc[frame["earnings_week"].astype(bool), ["ticker", "reaction_date"]].drop_duplicates()
+    used = used.assign(reaction_date=pd.to_datetime(used["reaction_date"]))
+    out = table.merge(used, on=["ticker", "reaction_date"])[["ticker", "report_date", "reaction_date"]]
+    if out.duplicated(["ticker", "reaction_date"]).any():
+        raise ValueError("two releases of one ticker share a reaction day; the report date would be ambiguous")
+    if len(out) != len(used):
+        raise ValueError(f"{len(used) - len(out)} reaction days in the predictions have no release")
+    return out.sort_values(["ticker", "reaction_date"]).reset_index(drop=True)
 
 
 def load_releases() -> pd.DataFrame:

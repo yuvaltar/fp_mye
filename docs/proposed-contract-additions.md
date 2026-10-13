@@ -18,10 +18,10 @@ The authoritative definitions are in `contracts/prediction.schema.json` and `con
 ## Engine side (Yuval): what the site expects
 
 1. Implement the three endpoints, `sector`, and `earnings_date`, exactly as in the schema. `/performance` and `/overview` can be computed from `artifacts/predictions.csv` (a throw-away harness did this for the site's tests: the QLIKE, RMSE, MAE, 88,140 scored predictions, 1,695 dates and 52/52 tickers all reproduce `docs/backtest.md` exactly).
-2. Names in `/performance.models`: `supervisor`, `har_rv` (the baseline row, which is the same as skill `short_term`), the other skills by their names (`regime`, `weak_signals`, `itransformer`), and the baselines `naive` and `equal_weight`. The `*_vs_har_rv` fields are decimals (0.109 = 10.9%), `null` on `har_rv`.
-3. `/performance.headline.t_statistic`: use the overlap-corrected one from the report (4.75); the harness's Newey-West version gave 5.08, so the corrections differ.
+2. Names in `/performance.models`: `supervisor`, `har_rv` (the plain HAR-RV baseline, kind `baseline`), the skills by their names (`short_term`, `regime`, `weak_signals`, `itransformer`, kind `skill`), and the baselines `naive` and `equal_weight`. Since the earnings layer (Step 13), `short_term` carries the earnings jump and is no longer the same as `har_rv`, so both rows appear. The `*_vs_har_rv` fields are decimals (0.109 = 10.9%), `null` on `har_rv`.
+3. `/performance.headline.t_statistic`: the overlap-corrected one the report prints (9.34 since Step 13; it was 4.75 before), computed by the same function.
 4. Add tests for the new definitions to `algo/tests/test_contract.py` and `test_api.py` (the existing 17 contract and API tests pass unchanged against the new schema).
-5. The 21.9% result (earnings layer) is an experiment so far: `artifacts/` still hold the Step 11 run (10.9% vs HAR-RV). The site shows whatever `/performance` returns, so after the backtest is re-run with the layer in the pipeline the numbers update by themselves.
+5. The earnings layer is in the product since Step 13: `artifacts/` hold that run (supervisor QLIKE 0.4263, +21.9% vs HAR-RV), and `/performance` returns it.
 
 ## Website side (Maor): done on this branch
 
