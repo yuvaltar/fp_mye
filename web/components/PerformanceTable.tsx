@@ -24,6 +24,7 @@ export function PerformanceTable({ data }: { data: PerformanceResponse }) {
     MetricKey,
     string[]
   >;
+  const modelNames = data.models.map((m) => m.name);
   const maxQlike = Math.max(...data.models.map((m) => m.qlike), Number.EPSILON);
   const perTicker = [...data.per_ticker].sort(
     (a, b) => (tickerImprovement(b) ?? -Infinity) - (tickerImprovement(a) ?? -Infinity),
@@ -80,7 +81,7 @@ export function PerformanceTable({ data }: { data: PerformanceResponse }) {
               {data.models.map((model) => (
                 <tr key={model.name} className={model.kind === "supervisor" ? "bg-surface-raised" : ""}>
                   <th scope="row" className="px-5 py-3 text-left font-normal">
-                    <span className="font-medium">{modelLabel(model.name)}</span>
+                    <span className="font-medium">{modelLabel(model.name, modelNames)}</span>
                     <span className="ml-2 text-xs text-muted">{KIND_LABEL[model.kind]}</span>
                   </th>
                   {METRICS.map((m) => (
@@ -120,9 +121,9 @@ export function PerformanceTable({ data }: { data: PerformanceResponse }) {
         </p>
         <ul className="mt-4 space-y-3">
           {data.skill_weights.map((skill) => (
-            <li key={skill.name} className="grid grid-cols-[12rem_1fr_auto] items-center gap-x-4 text-sm">
+            <li key={skill.name} className="grid grid-cols-[15rem_1fr_auto] items-center gap-x-4 text-sm">
               <span className="truncate">
-                <span className="font-medium">{modelLabel(skill.name)}</span>
+                <span className="font-medium">{modelLabel(skill.name, modelNames)}</span>
                 <span className="ml-2 hidden text-xs text-muted sm:inline">{horizonLabel(skill.horizon)}</span>
               </span>
               <div className="relative h-2 overflow-hidden rounded-full bg-surface-raised">

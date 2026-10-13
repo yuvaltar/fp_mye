@@ -1,4 +1,4 @@
-import { formatDate } from "@/lib/format";
+import { formatDate, formatWeekday } from "@/lib/format";
 
 /**
  * Explains why a prediction may be higher this week: the company reports its
@@ -12,12 +12,16 @@ export function EarningsNotice({ date }: { date: string }) {
       className="rounded-lg border border-up/40 bg-up/10 px-5 py-4"
     >
       <h2 id="earnings-heading" className="text-sm font-semibold text-up">
-        Earnings report on {formatDate(date)}
+        Earnings report on {formatWeekday(date)} {formatDate(date)}
       </h2>
       <p className="mt-1.5 text-sm leading-relaxed">
         This company reports its quarterly results inside the 5 trading days this prediction covers. Prices
         often jump around a report, so in a week like this the engine raises its forecast according to how
         much this stock moved after its earlier reports.
+      </p>
+      <p className="mt-1.5 text-xs text-muted">
+        The date is the day the report comes out. If it comes out after the market closes, the stock
+        reacts on the next trading day.
       </p>
     </section>
   );

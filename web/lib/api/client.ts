@@ -26,6 +26,13 @@ import type {
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 
+/**
+ * How long to wait for the engine. Generous on purpose: the first /performance
+ * after the engine starts takes about 5 seconds (it loads its libraries) and is
+ * then served from memory.
+ */
+const API_TIMEOUT_MS = 30_000;
+
 /** The ticker is not known to the API (HTTP 404). */
 export class NotFoundError extends Error {
   readonly ticker: string;
@@ -151,7 +158,10 @@ async function fetchJson<T>(pathAndQuery: string, ticker?: string): Promise<T> {
 async function fetchJsonUncached<T>(pathAndQuery: string, ticker?: string): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${apiBaseUrl()}${pathAndQuery}`, { cache: "no-store" });
+    response = await fetch(`${apiBaseUrl()}${pathAndQuery}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
   } catch (cause) {
     throw new ApiError(
       `Could not reach the API: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -178,7 +188,10 @@ async function fetchJsonUncached<T>(pathAndQuery: string, ticker?: string): Prom
  */
 async function fetchOptional<T>(pathAndQuery: string): Promise<Optional<T>> {
   try {
-    const response = await fetch(`${apiBaseUrl()}${pathAndQuery}`, { cache: "no-store" });
+    const response = await fetch(`${apiBaseUrl()}${pathAndQuery}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(API_TIMEOUT_MS),
+    });
     if (!response.ok) return { state: "unavailable" };
     return { state: "available", data: (await response.json()) as T, sample: false };
   } catch {
