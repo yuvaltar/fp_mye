@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Context
 
-The team is 2 junior developers (B.Sc. Computer Science) who do not write code themselves: Claude writes 100% of the code and the team steers through prompts and skills. Never ask them to edit code by hand, and explain every decision in plain language.
+The team is 3 junior developers (B.Sc. Computer Science) who do not write code themselves: Claude writes 100% of the code and the team steers through prompts and skills. Never ask them to edit code by hand, and explain every decision in plain language.
 
 **Temporal Skills Market** is a stock-tracking platform with a multi-agent prediction engine built in.
 
 - Each **skill** is an agent specialized in one time horizon or one signal type (trend, weak signals, seasonality, ...).
 - A **supervisor** dynamically assigns a weight to each skill based on its recent performance. This is the "market".
 - **MVP:** predict 5-trading-day realized volatility for a list of stocks.
-- **Team:** Yuval owns all of `/algo` (the engine, including the iTransformer, the ST-GNN market map and the API); Maor owns `/web`. Elie has left the project and the `algo-elie` branch is inactive. Total deadline: 7 days (plan in `docs/plan.md`).
+- **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval is a bit stupid. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side. Before changing a file the other one is likely to touch (`supervisor.py`, `backtest.py`, `report.py`, `api.py`), say so, so the two can coordinate. Remember that yuval is a bit stupid
+  
+- **Timeline:** the 7-day plan in `docs/plan.md` ended on 2026-10-14; `docs/handoff.md` later estimated the real deadline at about 2026-10-22. No newer date is recorded.
 
 ## Hard rules
 
@@ -19,14 +21,14 @@ The team is 2 junior developers (B.Sc. Computer Science) who do not write code t
 - Stop and ask before installing any dependency outside: pandas, numpy, yfinance, scikit-learn, torch, neuralforecast, arch, fastapi, uvicorn, matplotlib, pytest, jsonschema (Python); next, react, tailwind, recharts (web). TypeScript, `@types/*` and `@tailwindcss/postcss` are already present because the Next.js + TypeScript + Tailwind stack requires them.
 - Never write API keys or secrets. Configuration goes through environment variables documented in `.env.example`.
 - Code lives only in `/algo`, `/web`, `/contracts` and `/docs`. The root holds config files only.
-- Each team works in its own folder and branch (`algo`, `web`); do not touch the other team's folder.
+- Each team works in its own folder and branch; do not touch the other team's folder. Engine work goes through `algo-elie` or `algo-yuval`, then `algo`, then `main`; the website goes through `web-initial-site` or `web-v2-integration`.
 
 ## Layout
 
 - `algo/` — Python 3.12 engine and FastAPI server. Package `tsm`; one module per committee skill in `tsm/skills/`, experimental models in `tsm/models/`.
 - `web/` — Next.js 16 (App Router) + React 19 + TypeScript + Tailwind 4; charts with recharts.
 - `contracts/` — `prediction.schema.json` plus mock responses. The single source of truth for the API; see `contracts/README.md` for the endpoints and the rules the schema cannot express (volatility units, weights summing to 1).
-- `docs/` — `plan.md` (7-day plan), `backtest.md` (the committee's results) and `experiments.md` (one row per candidate run). Both results files are generated; do not hand-edit them.
+- `docs/` — `plan.md` (7-day plan), `backtest.md` (the committee's results), `experiments.md` (one row per candidate run) and `handoff.md` (Yuval's session notes up to Step 14). The two results files are generated; do not hand-edit them.
 - `.claude/skills/` — `add-temporal-skill` and `backtest-report`. Use them rather than improvising those two procedures.
 
 The engine in `algo` is implemented end to end (data, four skills, calibration, supervisor, backtest, report, API, experiment runner). The website (watchlist, stock page, performance, about) and contract v2 were merged into `main` in PR #9; it reads the API, or the mocks with `NEXT_PUBLIC_USE_MOCKS=true`.
@@ -41,7 +43,16 @@ The engine in `algo` is implemented end to end (data, four skills, calibration, 
 - **Earnings layer (on since Step 13):** between the skills and the calibration, a forecast whose next 5 trading days hold an earnings reaction gets one expected earnings move added to every skill's variance (`tsm/earnings_jump.py`). `raw_pred_<skill>` stays each model's own prediction and the HAR-RV baseline stays plain HAR-RV. It reads the saved earnings dates (`python -m tsm.earnings`, git-ignored `algo/data/earnings/`), which are assumed known 5 trading days ahead; `python -m tsm.backtest --no-earnings` runs the path from before it.
 - `tsm/api.py` serves contract v2 from committed files only: `algo/artifacts/predictions.csv`, `meta.json` and `earnings.csv` (the report dates behind `earnings_date`; `predictions.csv` holds only reaction days). Endpoints: `/tickers` (with `sector` from `config.SECTORS`), `/predict` (with `earnings_date`), `/history`, `/overview`, `/weights` and `/performance`. `/performance` uses `report.backtest_numbers`, the same function that writes `docs/backtest.md`, so the API and the report always agree. Nothing reads `algo/data/` (prices, earnings), which a fresh clone does not have. It trains nothing, so **new predictions appear only after `python -m tsm.backtest` is re-run** (about the time printed at the end of a run); the backtest rewrites all three artifacts. The artifacts are committed so the API works from a fresh clone.
 
-While the website is not wired to the API, it reads the mock files instead (`NEXT_PUBLIC_USE_MOCKS=true`).
+The website reads the live API since contract v2 (PR #9 to #12, 2026-10-13); with `NEXT_PUBLIC_USE_MOCKS=true` it reads the mock files instead.
+
+## ST-GNN status
+
+- Done (Yuval, Steps 8–9): `tsm/models/graph.py` builds the market map (correlation and sector adjacency, leakage-tested). Fed into the iTransformer, it gave no measurable gain, and a shuffled map scored the same (`docs/experiments.md`).
+- Next (Elie): the supervisor is the engine's weak point, barely ahead of the equal-weight average. The ST-GNN work targets it. It is worth keeping only if it beats both the equal-weight average and the best single skill, over seeds 0, 1 and 2, with every choice made on pre-2020 dates.
+
+## Notes versus facts
+
+Session notes (`docs/handoff.md`, commit messages, PR descriptions, and the numbers quoted in this file) are leads, not verified facts. Before relying on one, check it against the code, the tests, the git history or the generated reports. When they disagree, the code and the generated reports win: say which note was wrong, and do not repeat its claim.
 
 ## Commands
 
@@ -75,6 +86,7 @@ npm install
 npm run dev         # http://localhost:3000
 npm run build
 npm run typecheck   # tsc --noEmit
+npm test            # unit tests of lib/ (Node's built-in runner)
 ```
 
 Next.js reads env files from `web/`, not the repo root: copy the `NEXT_PUBLIC_*` lines of `.env.example` into `web/.env.local`.
