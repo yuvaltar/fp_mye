@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test \"lib/**/*.test.ts\""
+    "test": "node --experimental-strip-types --test \"lib/**/*.test.ts\"",
+    "ai:smoke": "node --experimental-strip-types --no-warnings scripts/ai-smoke.ts",
+    "mcp:stdio": "node --experimental-strip-types --no-warnings scripts/mcp-stdio.ts",
+    "ai:golden": "node scripts/ai-golden.mjs"
   },
   "dependencies": {
     "next": "^16.4.0",

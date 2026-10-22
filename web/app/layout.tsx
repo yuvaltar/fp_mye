@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { AssistantPanel } from "@/components/AssistantPanel";
 import { DisclaimerBanner } from "@/components/DisclaimerBanner";
+import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
 const geistSans = localFont({
@@ -35,6 +37,8 @@ export default function RootLayout({
         <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
           {children}
         </div>
+        <SiteFooter />
+        <AssistantPanel />
       </body>
     </html>
   );
