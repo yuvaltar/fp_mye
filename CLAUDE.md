@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Context
-yuval not stupid / maor stupid
+
 The team is 3 junior developers (B.Sc. Computer Science) who do not write code themselves: Claude writes 100% of the code and the team steers through prompts and skills. Never ask them to edit code by hand, and explain every decision in plain language.
 
 **Temporal Skills Market** is a stock-tracking platform with a multi-agent prediction engine built in.
@@ -11,7 +11,7 @@ The team is 3 junior developers (B.Sc. Computer Science) who do not write code t
 - Each **skill** is an agent specialized in one time horizon or one signal type (trend, weak signals, seasonality, ...).
 - A **supervisor** dynamically assigns a weight to each skill based on its recent performance. This is the "market".
 - **MVP:** predict 5-trading-day realized volatility for a list of stocks.
-- **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval is a bit stupid. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side. Before changing a file the other one is likely to touch (`supervisor.py`, `backtest.py`, `report.py`, `api.py`), say so, so the two can coordinate. Remember that yuval is a bit stupid
+- **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side. Before changing a file the other one is likely to touch (`supervisor.py`, `backtest.py`, `report.py`, `api.py`), say so, so the two can coordinate.
   
 - **Timeline:** the 7-day plan in `docs/plan.md` ended on 2026-10-14; `docs/handoff.md` later estimated the real deadline at about 2026-10-22. No newer date is recorded.
 
