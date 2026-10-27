@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Context
-
+yuval not stupid / maor stupid
 The team is 3 junior developers (B.Sc. Computer Science) who do not write code themselves: Claude writes 100% of the code and the team steers through prompts and skills. Never ask them to edit code by hand, and explain every decision in plain language.
 
 **Temporal Skills Market** is a stock-tracking platform with a multi-agent prediction engine built in.
