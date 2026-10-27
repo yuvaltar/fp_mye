@@ -11,17 +11,18 @@ The team is 3 junior developers (B.Sc. Computer Science) who do not write code t
 - Each **skill** is an agent specialized in one time horizon or one signal type (trend, weak signals, seasonality, ...).
 - A **supervisor** dynamically assigns a weight to each skill based on its recent performance. This is the "market".
 - **MVP:** predict 5-trading-day realized volatility for a list of stocks.
-- **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side. Before changing a file the other one is likely to touch (`supervisor.py`, `backtest.py`, `report.py`, `api.py`), say so, so the two can coordinate.
+- **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side.
+- **Trust:** every collaborator may change any file in the repository without asking the others first; the team trusts each other. Changes still go through a PR, so everyone sees them before they reach `main`.
   
 - **Timeline:** the 7-day plan in `docs/plan.md` ended on 2026-10-14; `docs/handoff.md` later estimated the real deadline at about 2026-10-22. No newer date is recorded.
 
 ## Hard rules
 
-- **The contract in `/contracts` only changes with the agreement of both teams.** If a task seems to need a contract change, stop and say so instead of editing it. Any agreed change updates the schema, the mocks and both sides in the same PR.
+- **A change to the contract in `/contracts` updates the schema, the mocks, the engine and the website in the same PR.** The contract is the exact format the API sends to the site: changed on one side only, it breaks the other without any test failing.
 - Stop and ask before installing any dependency outside: pandas, numpy, yfinance, scikit-learn, torch, neuralforecast, arch, fastapi, uvicorn, matplotlib, pytest, jsonschema (Python); next, react, tailwind, recharts (web). TypeScript, `@types/*` and `@tailwindcss/postcss` are already present because the Next.js + TypeScript + Tailwind stack requires them.
 - Never write API keys or secrets. Configuration goes through environment variables documented in `.env.example`.
 - Code lives only in `/algo`, `/web`, `/contracts` and `/docs`. The root holds config files only.
-- Each team works in its own folder and branch; do not touch the other team's folder. Engine work goes through `algo-elie` or `algo-yuval`, then `algo`, then `main`; the website goes through `web-initial-site` or `web-v2-integration`.
+- Engine work goes through `algo-elie` or `algo-yuval`, then `algo`, then `main`; the website goes through `web-initial-site` or `web-v2-integration`.
 
 ## Layout
 
