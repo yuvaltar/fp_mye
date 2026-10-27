@@ -100,3 +100,15 @@ heads and layers for the `bias` mode. Rows written before these two columns exis
 | 2026-10-27 | **`stgnn_corr` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4276 to 0.4322 (width 0.0046) | 0.4291 | +21.4% | 0.4045 | — | 1.656 | 438s total |
 | 2026-10-27 | **`stgnn_sector` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4277 to 0.4345 (width 0.0067) | 0.4304 | +21.2% | 0.4045 | — | 1.602 | 658s total |
 | 2026-10-27 | **`stgnn_shuffled` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4277 to 0.4335 (width 0.0058) | 0.4296 | +21.3% | 0.4041 | — | 1.731 | 1108s total |
+| 2026-10-27 | `stgnn_skill_none` (seed 0) | ST-GNN predictor, temporal part only: GRU over 44 days x 4 channels, 5-step path of log vol, MAE | 0.4937 | +9.6% | 0.4629 | 1.324 | — | 475s |
+| 2026-10-27 | `stgnn_skill_none` (seed 1) | ST-GNN predictor, temporal part only: GRU over 44 days x 4 channels, 5-step path of log vol, MAE | 0.4967 | +9.0% | 0.4628 | 1.317 | — | 515s |
+| 2026-10-27 | `stgnn_skill_none` (seed 2) | ST-GNN predictor, temporal part only: GRU over 44 days x 4 channels, 5-step path of log vol, MAE | 0.4942 | +9.5% | 0.4655 | 1.303 | — | 348s |
+| 2026-10-27 | `stgnn_skill_corr` (seed 0) | ST-GNN predictor: GRU + one graph layer h + g·A·h·W on the market-adjusted correlation map, MAE | 0.5068 | +7.2% | 0.4795 | 1.324 | — | 537s |
+| 2026-10-27 | `stgnn_skill_corr` (seed 1) | ST-GNN predictor: GRU + one graph layer h + g·A·h·W on the market-adjusted correlation map, MAE | 0.5072 | +7.1% | 0.4722 | 1.326 | — | 490s |
+| 2026-10-27 | `stgnn_skill_corr` (seed 2) | ST-GNN predictor: GRU + one graph layer h + g·A·h·W on the market-adjusted correlation map, MAE | 0.4980 | +8.8% | 0.4681 | 1.300 | — | 526s |
+| 2026-10-27 | `stgnn_skill_shuffled` (seed 0) | ST-GNN predictor: GRU + graph layer on the correlation map with stocks shuffled (control) | 0.5063 | +7.3% | 0.4754 | 1.326 | — | 529s |
+| 2026-10-27 | `stgnn_skill_shuffled` (seed 1) | ST-GNN predictor: GRU + graph layer on the correlation map with stocks shuffled (control) | 0.5061 | +7.3% | 0.4717 | 1.324 | — | 486s |
+| 2026-10-27 | `stgnn_skill_shuffled` (seed 2) | ST-GNN predictor: GRU + graph layer on the correlation map with stocks shuffled (control) | 0.4983 | +8.7% | 0.4669 | 1.305 | — | 465s |
+| 2026-10-27 | **`stgnn_skill_none` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4937 to 0.4967 (width 0.0030) | 0.4949 | +9.4% | 0.4637 | 1.315 | — | 1338s total |
+| 2026-10-27 | **`stgnn_skill_corr` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4980 to 0.5072 (width 0.0092) | 0.5040 | +7.7% | 0.4733 | 1.317 | — | 1553s total |
+| 2026-10-27 | **`stgnn_skill_shuffled` mean of 3 seeds** | Mean over seeds 0, 1, 2; QLIKE spread 0.4983 to 0.5063 (width 0.0080) | 0.5036 | +7.8% | 0.4713 | 1.318 | — | 1480s total |

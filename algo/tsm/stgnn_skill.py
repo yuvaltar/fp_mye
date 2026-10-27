@@ -38,7 +38,7 @@ import pandas as pd
 from tsm.backtest import TEST_START, apply_supervisor, calibrate, run_skills, tune_supervisor, BACKTEST_START
 from tsm.config import ARTIFACTS_DIR, DOCS_DIR
 from tsm.earnings_jump import add_jump
-from tsm.experiment import EXPERIMENTS_DIR, append_rows, load_frozen_panel, score
+from tsm.experiment import EXPERIMENTS_DIR, append_rows, load_committee, load_frozen_panel, score
 from tsm.models.stgnn_skill import CANDIDATES, build_candidate
 from tsm.report import scored_rows, validation_rows
 from tsm.stgnn import file_hashes
@@ -234,12 +234,14 @@ def run_score(seeds=SEEDS) -> dict:
     decision = decide(results[candidate]["scores"]["QLIKE"], reference["QLIKE"], per_seed)
 
     # The candidate alone, every seed, scored like every other row of docs/experiments.md.
-    alone = frame[["date", "ticker", "position", "realized_vol"]].copy()
+    # score() needs the committee's own raw predictions too: the HAR-RV baseline is one of them.
+    alone, committee_names = load_committee()
     for name in VARIANTS:
         for seed in seeds:
             alone[f"pred_{name}_seed{seed}"] = merged[f"{name}_seed{seed}"].to_numpy()
     labels = [f"{n}_seed{s}" for n in VARIANTS for s in seeds]
-    table = score(alone, labels)
+    table = score(alone, committee_names + labels).loc[labels]
+    table.attrs = score(alone, committee_names).attrs
     return {
         "gates": gate_result, "reference": reference, "results": results, "candidate": candidate,
         "per_seed": per_seed, "decision": decision, "alone": table, "seeds": list(seeds),
@@ -312,12 +314,20 @@ def results_markdown(r: dict) -> str:
         f"{'settled' if d['settled'] else 'not settled (smaller than the seed spread)'}.",
         "",
     ]
-    corr = r["results"]["stgnn_skill_corr"]["scores"].loc["supervisor", "QLIKE"]
-    shuffled = r["results"][CONTROL]["scores"].loc["supervisor", "QLIKE"]
+    corr, none, shuffled = (
+        r["results"][n]["scores"].loc["supervisor", "QLIKE"]
+        for n in ("stgnn_skill_corr", "stgnn_skill_none", CONTROL)
+    )
+    helps = corr < none and corr < shuffled and min(none, shuffled) - corr > d["spread"]
     lines += [
-        f"**Graph control.** Five-skill supervisor with the correlation map {corr:.4f}, with the shuffled "
-        f"map {shuffled:.4f}: "
-        + ("the real links do better." if corr < shuffled else "the real links do no better than shuffled ones."),
+        f"**Graph control.** Five-skill supervisor with the correlation map {corr:.4f}, without a graph "
+        f"{none:.4f}, with the shuffled map {shuffled:.4f}. "
+        + (
+            "The real links beat both, by more than the seed spread: the graph helps."
+            if helps
+            else "The gaps are smaller than the seed spread, or the model without a graph does as well: "
+            "the gain comes from the temporal model, not from the market map."
+        ),
         "",
     ]
     return "\n".join(lines)
