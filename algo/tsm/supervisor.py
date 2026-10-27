@@ -16,6 +16,7 @@ from tsm.skills.base import TemporalSkill
 from tsm.skills.itransformer import ITransformerCommitteeSkill
 from tsm.skills.regime import RegimeSkill
 from tsm.skills.short_term import ShortTermSkill
+from tsm.skills.stgnn import STGNNCommitteeSkill
 from tsm.skills.weak_signals import WeakSignalsSkill
 
 
@@ -24,8 +25,9 @@ def build_skills() -> list[TemporalSkill]:
 
     ``itransformer`` replaced ``multivariate`` (neuralforecast) in Step 11; that
     module is kept, outside the registry, so older results stay reproducible.
+    ``stgnn`` joined as the fifth skill after docs/stgnn-skill-results.md.
     """
-    return [ShortTermSkill(), RegimeSkill(), WeakSignalsSkill(), ITransformerCommitteeSkill()]
+    return [ShortTermSkill(), RegimeSkill(), WeakSignalsSkill(), ITransformerCommitteeSkill(), STGNNCommitteeSkill()]
 
 
 def qlike(realized_vol, predicted_vol):

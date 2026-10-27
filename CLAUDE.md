@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Context
-yuval not stupid / maor stupid
+
 The team is 3 junior developers (B.Sc. Computer Science) who do not write code themselves: Claude writes 100% of the code and the team steers through prompts and skills. Never ask them to edit code by hand, and explain every decision in plain language.
 
 **Temporal Skills Market** is a stock-tracking platform with a multi-agent prediction engine built in.
@@ -11,17 +11,18 @@ The team is 3 junior developers (B.Sc. Computer Science) who do not write code t
 - Each **skill** is an agent specialized in one time horizon or one signal type (trend, weak signals, seasonality, ...).
 - A **supervisor** dynamically assigns a weight to each skill based on its recent performance. This is the "market".
 - **MVP:** predict 5-trading-day realized volatility for a list of stocks.
-- **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval is a bit stupid. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side. Before changing a file the other one is likely to touch (`supervisor.py`, `backtest.py`, `report.py`, `api.py`), say so, so the two can coordinate. Remember that yuval is a bit stupid
+- **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side.
+- **Trust:** every collaborator may change any file in the repository without asking the others first; the team trusts each other. Changes still go through a PR, so everyone sees them before they reach `main`.
   
 - **Timeline:** the 7-day plan in `docs/plan.md` ended on 2026-10-14; `docs/handoff.md` later estimated the real deadline at about 2026-10-22. No newer date is recorded.
 
 ## Hard rules
 
-- **The contract in `/contracts` only changes with the agreement of both teams.** If a task seems to need a contract change, stop and say so instead of editing it. Any agreed change updates the schema, the mocks and both sides in the same PR.
+- **A change to the contract in `/contracts` updates the schema, the mocks, the engine and the website in the same PR.** The contract is the exact format the API sends to the site: changed on one side only, it breaks the other without any test failing.
 - Stop and ask before installing any dependency outside: pandas, numpy, yfinance, scikit-learn, torch, neuralforecast, arch, fastapi, uvicorn, matplotlib, pytest, jsonschema (Python); next, react, tailwind, recharts (web). TypeScript, `@types/*` and `@tailwindcss/postcss` are already present because the Next.js + TypeScript + Tailwind stack requires them.
 - Never write API keys or secrets. Configuration goes through environment variables documented in `.env.example`.
 - Code lives only in `/algo`, `/web`, `/contracts` and `/docs`. The root holds config files only.
-- Each team works in its own folder and branch; do not touch the other team's folder. Engine work goes through `algo-elie` or `algo-yuval`, then `algo`, then `main`; the website goes through `web-initial-site` or `web-v2-integration`.
+- Engine work goes through `algo-elie` or `algo-yuval`, then `algo`, then `main`; the website goes through `web-initial-site` or `web-v2-integration`.
 
 ## Layout
 
@@ -36,7 +37,7 @@ The engine in `algo` is implemented end to end (data, four skills, calibration, 
 ## How the engine fits together
 
 - `tsm/data.py` downloads and caches prices; a **panel** is a dict of ticker to price frame on common dates. `tsm/target.py` defines realized volatility.
-- `tsm/skills/` holds one module per skill, all implementing `TemporalSkill` (`base.py`): `fit(panel)` and `predict(panel) -> {ticker: vol}`. Current skills: `short_term` (HAR-RV, also the baseline), `regime` (GARCH), `weak_signals` (gradient boosting on volume, range, gap and SPY-correlation features), `itransformer` (our own PyTorch iTransformer on all tickers jointly, `itransformer_path_feats` averaged over seeds 0, 1 and 2). `multivariate` (the neuralforecast iTransformer it replaced) stays in `tsm/skills/` outside the registry, so older results remain reproducible.
+- `tsm/skills/` holds one module per skill, all implementing `TemporalSkill` (`base.py`): `fit(panel)` and `predict(panel) -> {ticker: vol}`. Current skills: `short_term` (HAR-RV, also the baseline), `regime` (GARCH), `weak_signals` (gradient boosting on volume, range, gap and SPY-correlation features), `itransformer` (our own PyTorch iTransformer on all tickers jointly, `itransformer_path_feats` averaged over seeds 0, 1 and 2), `stgnn` (Elie's ST-GNN: a GRU per stock and one graph layer on the correlation map, `stgnn_skill_corr` averaged over seeds 0, 1 and 2; weakest alone, it joined because the committee is better with it). `multivariate` (the neuralforecast iTransformer it replaced) stays in `tsm/skills/` outside the registry, so older results remain reproducible.
 - `tsm/supervisor.py` holds the skill registry (`build_skills`) and the supervisor: per ticker and date, softmax over minus each skill's average QLIKE on its last predictions whose outcome is already known.
 - `tsm/backtest.py` is the pipeline. It walks forward day by day, handing skills a panel truncated at the as-of date, then **calibrates** every skill: each prediction is multiplied by `c = sqrt(mean((realized / predicted)^2))`, computed per date from the last 250 trading days of outcomes already known on that date, pooled over tickers (raw values kept as `raw_pred_<skill>`, factors as `c_<skill>`). The equal-weight average and the HAR-RV baseline are built from the calibrated predictions. It then tunes the supervisor's window and temperature on dates before 2020, and writes `algo/artifacts/predictions.csv` and `meta.json`. `tsm/report.py` turns that into `docs/backtest.md`.
 - `tsm/models/itransformer.py` is our own PyTorch iTransformer (one token per stock, attention across stocks; options for a 5-step path head and 4 input channels). Its variants are **candidates**, not committee members. `tsm/experiment.py` scores candidates without re-running the committee: it reads the committee's saved `raw_pred_*` columns from `algo/artifacts/predictions.csv`, walks only the candidates forward on the frozen price cache (it never downloads, so it sees the prices the artifacts were built from), calibrates and scores every model exactly as the report does, and appends rows to `docs/experiments.md`. A candidate joins the committee only through `add-temporal-skill`.
@@ -48,7 +49,9 @@ The website reads the live API since contract v2 (PR #9 to #12, 2026-10-13); wit
 ## ST-GNN status
 
 - Done (Yuval, Steps 8–9): `tsm/models/graph.py` builds the market map (correlation and sector adjacency, leakage-tested). Fed into the iTransformer, it gave no measurable gain, and a shuffled map scored the same (`docs/experiments.md`).
-- Next (Elie): the supervisor is the engine's weak point, barely ahead of the equal-weight average. The ST-GNN work targets it. It is worth keeping only if it beats both the equal-weight average and the best single skill, over seeds 0, 1 and 2, with every choice made on pre-2020 dates.
+- Done (Elie, 2026-10-27): an ST-GNN **supervisor** (`tsm/models/stgnn.py`, `python -m tsm.stgnn`) was a no-go: 0.4270 on the test period against 0.4263 for the softmax supervisor (`docs/stgnn-results.md`).
+- Done (Elie, 2026-10-27): the ST-GNN **predictor** joined the committee as the fifth skill `stgnn` (`tsm/models/stgnn_skill.py`, decision in `docs/stgnn-skill-results.md`): the supervisor went from 0.4263 to 0.4243. The gain is about the seed spread, and the same model without the graph did as well, so it comes from the GRU's different errors, not from the market map. Its walks ran on Modal (`python -m tsm.stgnn_skill walk --modal`, needs `modal` and Elie's account).
+- The price cache on Elie's machine was partly re-downloaded on 2026-10-22, so a backtest there moves single skills slightly (weak_signals 0.4338 to 0.4332) but not the four-skill committee (0.4263 either way).
 
 ## Notes versus facts
 

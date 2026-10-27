@@ -9,6 +9,7 @@ from tsm.skills.itransformer import ITransformerCommitteeSkill
 from tsm.skills.multivariate import MultivariateSkill
 from tsm.skills.regime import RegimeSkill
 from tsm.skills.short_term import ShortTermSkill
+from tsm.skills.stgnn import STGNNCommitteeSkill
 from tsm.skills.weak_signals import WeakSignalsSkill
 from tsm.supervisor import build_skills
 
@@ -25,6 +26,7 @@ SKILLS = {
     "itransformer": lambda: ITransformerCommitteeSkill(
         input_size=20, hidden_size=8, n_heads=2, d_ff=16, max_steps=5
     ),
+    "stgnn": lambda: STGNNCommitteeSkill(input_size=20, hidden=8, max_steps=5),
 }
 
 # Experiment skills: they must pass every check below, but they are not in the
