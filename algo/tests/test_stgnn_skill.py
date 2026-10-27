@@ -102,21 +102,22 @@ def committed():
 
 def test_gates_rebuild_the_saved_committee(committed):
     frame, skills, meta = committed
-    result, four = runner.gates(frame, skills, meta)
+    result, rebuilt = runner.gates(frame, skills, meta)
     assert result["supervisor settings reproduced"]
-    ref = runner.qlikes(four, ["supervisor", "equal_weight"])
-    assert ref.loc["supervisor", "QLIKE"] == pytest.approx(0.4263, abs=5e-5)
-    assert ref.loc["equal_weight", "QLIKE"] == pytest.approx(0.4300, abs=5e-5)
+    ref = runner.qlikes(rebuilt, ["supervisor", "equal_weight"])
+    saved = runner.qlikes(frame, ["supervisor", "equal_weight"])
+    np.testing.assert_allclose(ref["QLIKE"], saved["QLIKE"], rtol=0, atol=runner.QLIKE_TOLERANCE)
 
 
-def test_a_copy_of_a_member_changes_nothing_in_equal_weight_terms(committed):
-    """A fifth member identical to the equal-weight mix leaves the equal-weight average unchanged."""
+def test_one_more_member_enters_the_equal_weight_average_with_its_share(committed):
+    """One more member moves the equal-weight average by exactly its 1/(k+1) share."""
     frame, skills, _ = committed
     base = {s: frame[f"raw_pred_{s}"] for s in skills}
-    four, _ = runner.committee(frame, base)
-    five, _ = runner.committee(frame, {**base, "copy": frame["raw_pred_weak_signals"]})
-    expected = (4 * four["equal_weight"] + five["pred_copy"]) / 5
-    np.testing.assert_allclose(five["equal_weight"], expected, rtol=0, atol=1e-12)
+    k = len(skills)
+    committee, _ = runner.committee(frame, base)
+    more, _ = runner.committee(frame, {**base, "copy": frame["raw_pred_weak_signals"]})
+    expected = (k * committee["equal_weight"] + more["pred_copy"]) / (k + 1)
+    np.testing.assert_allclose(more["equal_weight"], expected, rtol=0, atol=1e-12)
 
 
 def test_decision_needs_both_bars():

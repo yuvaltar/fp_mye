@@ -210,6 +210,12 @@ def decide(five: pd.Series, four: pd.Series, per_seed_supervisor: list[float]) -
 
 def run_score(seeds=SEEDS) -> dict:
     frame, skills, meta = load_frame()
+    if "stgnn" in skills:
+        raise RuntimeError(
+            "stgnn is already a committee skill in artifacts/meta.json, so this would add it twice. "
+            "The decision in docs/stgnn-skill-results.md was made on the four-skill artifacts of commit "
+            "d3a64bb; check that commit out to reproduce it."
+        )
     runs = load_runs(seeds=seeds)
     merged = frame[["date", "ticker"]].merge(runs, on=["date", "ticker"], how="left", validate="one_to_one")
     if merged.drop(columns=["date", "ticker"]).isna().any().any():

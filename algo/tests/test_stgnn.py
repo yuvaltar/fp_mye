@@ -183,9 +183,13 @@ def test_periods_are_2019_and_from_test_start(experiment):
 
 
 def test_reference_scores_match_the_report(experiment):
+    """The runner scores the committee with the same rows and numbers as docs/backtest.md."""
+    from tsm.report import backtest_numbers
+
     refs = runner.reference_scores(experiment)
-    assert refs.loc["supervisor", "QLIKE"] == pytest.approx(0.4263, abs=5e-5)
-    assert refs.loc["equal_weight", "QLIKE_2019"] == pytest.approx(0.4109, abs=5e-5)
+    table = backtest_numbers(experiment.frame, experiment.meta)["table"]
+    for model in ("supervisor", "equal_weight", "baseline", *experiment.skills):
+        assert refs.loc[model, "QLIKE"] == pytest.approx(table.loc[model, "QLIKE"], abs=1e-12)
 
 
 def references(supervisor=0.4263, equal=0.4300, best=0.4275):

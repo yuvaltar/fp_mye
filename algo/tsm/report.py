@@ -356,6 +356,15 @@ def write_report(frame: pd.DataFrame, meta: dict, docs_dir=DOCS_DIR, earnings: d
     else:
         baseline_note = "The skill `short_term` is the HAR-RV model, so it and the baseline are one and the same row."
         calibration_note = earnings_caveat = ""
+    stgnn_caveat = (
+        "\n- The skill `stgnn` (our ST-GNN: a GRU per stock and one graph layer on the correlation map, the "
+        "mean of three seeds) is the weakest skill alone. It joined because the committee is better with it "
+        "(docs/stgnn-skill-results.md), but that gain is about the size of the spread between seeds, and the "
+        "same model without the graph layer did as well: the gain comes from its different errors, not from "
+        "the market map."
+        if "stgnn" in skill_names
+        else ""
+    )
     earnings_text = "\n" + earnings_section(earnings, skill_names) if earnings is not None else ""
     text = f"""# Backtest report
 
@@ -426,7 +435,7 @@ Per ticker (mean weight of each skill, and QLIKE of the supervisor against HAR-R
 - Consecutive evaluation dates share 4 of their 5 target days, so the {len(rows)} scored predictions are far from independent. The t-statistic above corrects for this; the raw count overstates the evidence.
 - "Realized volatility" here comes from 5 daily closing prices, which is itself a noisy measure of true volatility. Part of every model's error is noise in the target.
 - The supervisor's window and temperature were chosen once, on predictions from before {meta['test_start']}, and not touched afterwards. The skills' own settings (network size, tree depth, feature windows) were fixed by hand and not tuned.
-- The skill `itransformer` (our own PyTorch iTransformer, the mean of three seeds) is deliberately small (hidden size 64, 300 training steps, retrained every 125 trading days) to keep the run short on CPU. A larger network might do better or worse; this was not explored. The seeds are averaged because a single seed moved its test QLIKE by up to 0.005 in `docs/experiments.md`.
+- The skill `itransformer` (our own PyTorch iTransformer, the mean of three seeds) is deliberately small (hidden size 64, 300 training steps, retrained every 125 trading days) to keep the run short on CPU. A larger network might do better or worse; this was not explored. The seeds are averaged because a single seed moved its test QLIKE by up to 0.005 in `docs/experiments.md`.{stgnn_caveat}
 - Every skill is rescaled each day by the calibration factor described above. The factor is itself estimated from {calibration_window} days of noisy outcomes, so it carries estimation error, and it is a single number per skill: it removes an average bias but cannot fix a skill whose bias varies with the level of volatility.
 - Prices are adjusted for splits and dividends as of the download date.{earnings_caveat}
 """
