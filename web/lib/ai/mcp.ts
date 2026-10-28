@@ -56,7 +56,7 @@ const GLOSSARY = `# Glossary
 - **Volatility**: how hard a stock's price jumps around, regardless of direction. Shown as an annualized rate: 24.0% means the stock moves as if its yearly volatility were 24%. A week's typical move is about the annual figure divided by 7.1.
 - **Expected volatility (predicted_vol)**: the engine's prediction of the volatility of the next 5 trading days after as_of_date.
 - **HAR-RV baseline**: a standard statistical model for volatility forecasts. The engine is only useful if it does better.
-- **Skill**: one prediction model in the committee (HAR-RV with the earnings jump, GARCH, Boosting, iTransformer).
+- **Skill**: one prediction model in the committee (HAR-RV with the earnings jump, GARCH, Boosting, iTransformer, ST-GNN).
 - **Supervisor**: weights the skills by their recent accuracy and combines them into the final prediction.
 - **Supervisor recent accuracy (supervisor_confidence)**: a 0 to 100% score of how well the supervisor itself predicted lately. It is not a probability.
 - **Realized volatility**: the volatility that actually occurred, measured from daily closes.
@@ -67,7 +67,7 @@ const GLOSSARY = `# Glossary
 
 const METHODOLOGY = `# Methodology
 
-Several separate models each predict the next 5 trading days' volatility on their own. Every day, for every stock, a supervisor scores each model on its last 60 to 120 predictions whose outcome is already known and gives better scorers more weight; the weights add up to 100%. The final prediction is the weighted combination, shown next to the HAR-RV baseline.
+Five separate models (HAR-RV with the earnings jump, GARCH, Boosting, our own iTransformer and the ST-GNN, a graph network over how stocks move together) each predict the next 5 trading days' volatility on their own. Every day, for every stock, a supervisor scores each model on its last 60 to 120 predictions whose outcome is already known and gives better scorers more weight; the weights add up to 100%. The final prediction is the weighted combination, shown next to the HAR-RV baseline.
 
 Each model's output is calibrated before it is compared. In earnings weeks the engine adds the stock's typical earnings jump, estimated only from earlier reports.
 
