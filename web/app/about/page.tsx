@@ -27,6 +27,7 @@ const COMMITTEE = [
   { name: "GARCH", range: "Long", text: "A classic model: a storm persists, then volatility returns to its average." },
   { name: "Boosting", range: "Short", text: "Decision trees on trading volume, the daily price range and opening gaps." },
   { name: "iTransformer", range: "Medium", text: "Our own deep network, which reads all the stocks together. Its prediction is the average of three training runs." },
+  { name: "ST-GNN", range: "Short", text: "A small network per stock plus one layer over the map of how stocks move together. Weakest on its own, but it makes different mistakes from the others, so the committee is better with it." },
 ] as const;
 
 const GLOSSARY: { term: string; definition: ReactNode }[] = [
