@@ -30,7 +30,7 @@ web/
 
 ### What the real engine returns (from the algo team's summary, 2026-10-08)
 
-- Real skill names: `short_term` (HAR-RV, short), `regime` (GARCH, long), `weak_signals` (Boosting, short), `multivariate` (iTransformer, medium). The contract mocks use other names (`short_trend`, ...), and a graph-aware iTransformer with an unknown name is coming. Labels, descriptions and colors are looked up by name in `lib/derive.ts` with a fallback, never assumed.
+- Real skill names (since 2026-10-27): `short_term` (HAR-RV, short), `regime` (GARCH, long), `weak_signals` (Boosting, short), `itransformer` (iTransformer, medium; it replaced `multivariate`) and `stgnn` (ST-GNN, short). The contract mocks use other names (`short_trend`, ...). Labels, descriptions and colors are looked up by name in `lib/derive.ts` with a fallback, never assumed.
 - A skill keeps one color on every stock and chart (`skillColorIndex`).
 - `/history` has about 2,200 daily points per ticker (since 2018). Charts slice by calendar days (`sliceByDays`), "All" shows one point per week (`downsampleWeekly`), and the CSV has every day. Ranges are by date, never by number of points.
 - `supervisor_confidence` is the supervisor's recent accuracy (a 0..1 score), not a probability: the UI says "recent accuracy" and never "chance" or "probability".

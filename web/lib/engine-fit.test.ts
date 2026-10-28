@@ -145,6 +145,14 @@ test("itransformer, the engine's own model, has a label, a description and a sta
   assert.equal(new Set(real).size, 4);
 });
 
+test("stgnn, the fifth skill, has a label, a description and its own stable color", () => {
+  assert.equal(skillLabel("stgnn"), "ST-GNN");
+  assert.ok(skillDescription("stgnn")?.includes("graph network"));
+  assert.equal(skillColorIndex("stgnn"), 4);
+  const real = ["short_term", "weak_signals", "regime", "itransformer", "stgnn"].map(skillColorIndex);
+  assert.equal(new Set(real).size, 5);
+});
+
 test("modelLabel keeps the HAR-RV skill and the HAR-RV baseline apart when both are shown", () => {
   assert.equal(modelLabel("har_rv"), "HAR-RV baseline");
   // Without the baseline row (an engine without the earnings layer) short_term is HAR-RV itself.
