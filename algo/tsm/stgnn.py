@@ -129,7 +129,9 @@ class Experiment:
 def gate_supervisor(exp: Experiment) -> float:
     """Gate 1: the saved ``supervisor`` column, recomputed from the saved calibrated predictions."""
     settings = exp.meta["supervisor"]
-    supervisor = Supervisor(window=settings["window"], temperature=settings["temperature"])
+    supervisor = Supervisor(
+        window=settings["window"], temperature=settings["temperature"], mode=settings.get("mode", "per_ticker")
+    )
     base = exp.frame[["date", "ticker", "position", "realized_vol"] + [f"pred_{s}" for s in exp.skills]]
     redone = apply_supervisor(base, supervisor, exp.skills)
     return float(np.nanmax(np.abs(redone["supervisor"].to_numpy() - exp.frame["supervisor"].to_numpy())))

@@ -38,15 +38,17 @@ from tsm.earnings_jump import (
     without_next_release,
 )
 from tsm.skills.base import TemporalSkill
-from tsm.supervisor import Supervisor, build_skills, qlike
+from tsm.supervisor import Supervisor, build_skills, pooled_weights, qlike
 from tsm.target import forward_realized_vol, realized_vol
 
 BACKTEST_START = "2018-01-01"  # first evaluation date (three years of history before it)
 TEST_START = "2020-01-01"  # results are reported from here; earlier dates tune the supervisor
 BASELINE_SKILL = "short_term"  # the HAR-RV skill doubles as the baseline
 
-WINDOW_GRID = (10, 20, 60, 120)
-TEMPERATURE_GRID = (0.02, 0.05, 0.1, 0.25, 1.0)
+# Step 15: the pooled mode and the longer windows and lower temperatures it can use.
+MODE_GRID = ("per_ticker", "pooled")
+WINDOW_GRID = (10, 20, 60, 120, 250, 500)
+TEMPERATURE_GRID = (0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 1.0)
 
 CALIBRATION_WINDOW = 250  # trading days of already-known outcomes used to calibrate a skill
 
@@ -174,24 +176,40 @@ def add_targets_and_baselines(
 
 
 def apply_supervisor(frame: pd.DataFrame, supervisor: Supervisor, skill_names: list[str]) -> pd.DataFrame:
-    """Add the supervisor's weights, combined prediction and confidence, ticker by ticker."""
+    """Add the supervisor's weights, combined prediction and confidence, ticker by ticker.
+
+    In pooled mode the weights of each date are computed once, over all tickers
+    (``pooled_weights``), and handed to every ticker.
+    """
+    columns = [f"pred_{s}" for s in skill_names]
+    shared = None
+    if supervisor.mode == "pooled":
+        shared = pooled_weights(
+            frame[columns].rename(columns=lambda c: c.removeprefix("pred_")),
+            frame["realized_vol"],
+            frame["position"],
+            supervisor.window,
+            supervisor.temperature,
+        )
     parts = []
     for _, group in frame.groupby("ticker", sort=False):
-        preds = group[[f"pred_{s}" for s in skill_names]].rename(columns=lambda c: c.removeprefix("pred_"))
-        parts.append(supervisor.combine(preds, group["realized_vol"], group["position"].to_numpy()))
+        preds = group[columns].rename(columns=lambda c: c.removeprefix("pred_"))
+        positions = group["position"].to_numpy()
+        weights = None if shared is None else shared.loc[positions].to_numpy()
+        parts.append(supervisor.combine(preds, group["realized_vol"], positions, weights=weights))
     return frame.drop(columns=[c for c in parts[0].columns if c in frame.columns]).join(pd.concat(parts))
 
 
 def tune_supervisor(frame: pd.DataFrame, skill_names: list[str], before: str = TEST_START) -> Supervisor:
-    """Pick the window and temperature with the lowest QLIKE on dates before the test period.
+    """Pick the mode, window and temperature with the lowest QLIKE on dates before the test period.
 
     Only predictions whose 5-day outcome was known before the test period take part.
     """
     cutoff = frame.loc[frame["date"] < pd.Timestamp(before), "position"].max() - HORIZON_DAYS
     tuning = frame[frame["position"] <= cutoff]
     best, best_loss = Supervisor(), np.inf
-    for window, temperature in product(WINDOW_GRID, TEMPERATURE_GRID):
-        candidate = Supervisor(window=window, temperature=temperature)
+    for mode, window, temperature in product(MODE_GRID, WINDOW_GRID, TEMPERATURE_GRID):
+        candidate = Supervisor(window=window, temperature=temperature, mode=mode)
         scored = apply_supervisor(tuning, candidate, skill_names)
         loss = qlike(scored["realized_vol"], scored["supervisor"]).mean()
         if loss < best_loss:
@@ -286,6 +304,79 @@ def earnings_comparison(
     }
 
 
+def supervisor_settings(supervisor: Supervisor) -> dict:
+    """The tuned supervisor as saved in meta.json."""
+    return {"mode": supervisor.mode, "window": supervisor.window, "temperature": supervisor.temperature}
+
+
+SUPERVISOR_COLUMNS = ("supervisor", "confidence")
+
+
+def resupervise(frame: pd.DataFrame, skill_names: list[str], tune_before: str = TEST_START):
+    """Re-tune and re-apply the supervisor on saved predictions. Returns (frame, supervisor).
+
+    Only ``w_<skill>``, ``supervisor`` and ``confidence`` change; every other
+    column, and the row and column order, stay as they were.
+    """
+    order = list(frame.columns)
+    dropped = [f"w_{s}" for s in skill_names] + list(SUPERVISOR_COLUMNS)
+    base = frame.drop(columns=[c for c in dropped if c in frame.columns])
+    supervisor = tune_supervisor(base, skill_names, before=tune_before)
+    out = apply_supervisor(base, supervisor, skill_names)
+    return out[order + [c for c in out.columns if c not in order]], supervisor
+
+
+def earnings_comparison_from_artifacts(frame: pd.DataFrame, skill_names: list[str], test_start: str = TEST_START) -> dict:
+    """The report's before/after table of the earnings layer, from the saved predictions alone.
+
+    "Before" is the path without the layer: each model's own prediction
+    (``raw_pred_<skill>``) calibrated by the usual rule, then equal-weight, the
+    HAR-RV baseline and the retuned supervisor, as ``finish_pipeline`` does
+    without reactions. The placebo needs prices, so it is left out.
+    """
+    from tsm.report import week_scores
+
+    columns = {"supervisor": "supervisor", "equal_weight": "equal_weight", "baseline": "baseline"}
+    columns |= {name: f"pred_{name}" for name in skill_names}
+    before = frame.drop(columns=[f"c_{s}" for s in skill_names]).copy()
+    for name in skill_names:
+        before[f"pred_{name}"] = before[f"raw_pred_{name}"]
+    before = before.drop(columns=[f"raw_pred_{s}" for s in skill_names])
+    before = calibrate(before, skill_names)
+    before["equal_weight"] = before[[f"pred_{s}" for s in skill_names]].mean(axis=1)
+    before["baseline"] = before[f"pred_{BASELINE_SKILL}"]
+    before, _ = resupervise(before, skill_names, tune_before=test_start)
+    return {
+        "before": week_scores(before, columns, test_start),
+        "after": week_scores(frame, columns, test_start),
+        "placebo": None,
+    }
+
+
+def rebuild_from_artifacts() -> None:
+    """``--from-artifacts``: re-tune the supervisor on the committed predictions, without retraining.
+
+    Reads ``artifacts/predictions.csv`` and ``meta.json``, rewrites the supervisor's
+    columns, its settings in meta.json, and docs/backtest.md. earnings.csv is not touched.
+    """
+    from tsm.report import write_report
+
+    started = time.time()
+    meta = json.loads((ARTIFACTS_DIR / "meta.json").read_text())
+    names = [s["name"] for s in meta["skills"]]
+    frame = pd.read_csv(ARTIFACTS_DIR / "predictions.csv", parse_dates=["date", "reaction_date"])
+    print(f"Re-tuning the supervisor on {len(frame)} saved predictions of {len(names)} skills...", flush=True)
+    frame, supervisor = resupervise(frame, names)
+    earnings = earnings_comparison_from_artifacts(frame, names) if meta.get("earnings", {}).get("enabled") else None
+    frame.to_csv(ARTIFACTS_DIR / "predictions.csv", index=False, float_format="%.6f")
+    meta["supervisor"] = supervisor_settings(supervisor)
+    meta["generated_at"] = date.today().isoformat()
+    meta["supervisor_rebuilt_from_artifacts"] = True
+    (ARTIFACTS_DIR / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+    write_report(frame, meta, earnings=earnings)
+    print(f"Done in {round(time.time() - started)}s. Supervisor: {meta['supervisor']}")
+
+
 def main(argv: list[str] | None = None) -> None:
     from tsm.report import write_report
 
@@ -303,7 +394,15 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="leave out the earnings layer: the path from before Step 13, to reproduce older results",
     )
+    parser.add_argument(
+        "--from-artifacts",
+        action="store_true",
+        help="no retraining: re-tune and re-apply only the supervisor on the saved predictions, then rewrite the report",
+    )
     args = parser.parse_args(argv)
+    if args.from_artifacts:
+        rebuild_from_artifacts()
+        return
 
     started = time.time()
     panel = load_panel(cache_only=args.cache_only)
@@ -344,7 +443,7 @@ def main(argv: list[str] | None = None) -> None:
     meta = {
         "model_version": MODEL_VERSION,
         "skills": [{"name": s.name, "horizon": s.horizon} for s in skills],
-        "supervisor": {"window": supervisor.window, "temperature": supervisor.temperature},
+        "supervisor": supervisor_settings(supervisor),
         "test_start": TEST_START,
         "calibration_window": CALIBRATION_WINDOW,
         "last_date": str(frame["date"].max().date()),
