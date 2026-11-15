@@ -45,8 +45,11 @@ BACKTEST_START = "2018-01-01"  # first evaluation date (three years of history b
 TEST_START = "2020-01-01"  # results are reported from here; earlier dates tune the supervisor
 BASELINE_SKILL = "short_term"  # the HAR-RV skill doubles as the baseline
 
-# Step 15: the pooled mode and the longer windows and lower temperatures it can use.
-MODE_GRID = ("per_ticker", "pooled")
+# Step 15: the supervisor is pooled (every skill judged on all tickers together), a design choice made
+# in advance: 52 times more evidence per date than one ticker's own history. On the tuning year it ties
+# with per_ticker (0.4007 vs 0.4005 at their best settings), so the data before 2020 neither confirms
+# nor rejects it; docs/backtest.md says so. ("per_ticker",) reproduces the earlier supervisor.
+MODE_GRID = ("pooled",)
 WINDOW_GRID = (10, 20, 60, 120, 250, 500)
 TEMPERATURE_GRID = (0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.25, 1.0)
 
@@ -200,17 +203,42 @@ def apply_supervisor(frame: pd.DataFrame, supervisor: Supervisor, skill_names: l
     return frame.drop(columns=[c for c in parts[0].columns if c in frame.columns]).join(pd.concat(parts))
 
 
-def tune_supervisor(frame: pd.DataFrame, skill_names: list[str], before: str = TEST_START) -> Supervisor:
-    """Pick the mode, window and temperature with the lowest QLIKE on dates before the test period.
+def calibrated_from(frame: pd.DataFrame, window: int = CALIBRATION_WINDOW, horizon: int = HORIZON_DAYS) -> int | None:
+    """First position whose calibration factor uses a full ``window`` of known outcomes, or None.
 
-    Only predictions whose 5-day outcome was known before the test period take part.
+    Before it the factors rest on fewer outcomes (none at the very start, factor 1), so the
+    skills are not yet on a comparable scale and their losses measure bias rather than skill.
+    """
+    dates = np.sort(frame["position"].unique())
+    known = np.searchsorted(dates, dates - horizon, side="right")
+    full = np.flatnonzero(known >= window)
+    return int(dates[full[0]]) if len(full) else None
+
+
+def tune_supervisor(
+    frame: pd.DataFrame,
+    skill_names: list[str],
+    before: str = TEST_START,
+    modes: tuple[str, ...] | None = None,
+) -> Supervisor:
+    """Pick the window and temperature (and mode, if several) with the lowest QLIKE before the test period.
+
+    Only predictions whose 5-day outcome was known before the test period take part,
+    and they are scored only from the first date whose calibration is fully warmed up
+    (``calibrated_from``; on the real data 2019-01-07), because before it the skills'
+    losses measure their scale, not their skill. The weights themselves may still use
+    every earlier known outcome. If the tuning period ends before the warm-up does (the
+    short synthetic panels of the tests), every tuning date is scored.
     """
     cutoff = frame.loc[frame["date"] < pd.Timestamp(before), "position"].max() - HORIZON_DAYS
     tuning = frame[frame["position"] <= cutoff]
+    warm = calibrated_from(frame)
+    scored_from = warm if warm is not None and warm <= cutoff else tuning["position"].min()
     best, best_loss = Supervisor(), np.inf
-    for mode, window, temperature in product(MODE_GRID, WINDOW_GRID, TEMPERATURE_GRID):
+    for mode, window, temperature in product(modes or MODE_GRID, WINDOW_GRID, TEMPERATURE_GRID):
         candidate = Supervisor(window=window, temperature=temperature, mode=mode)
         scored = apply_supervisor(tuning, candidate, skill_names)
+        scored = scored[scored["position"] >= scored_from]
         loss = qlike(scored["realized_vol"], scored["supervisor"]).mean()
         if loss < best_loss:
             best, best_loss = candidate, loss
@@ -326,6 +354,41 @@ def resupervise(frame: pd.DataFrame, skill_names: list[str], tune_before: str = 
     return out[order + [c for c in out.columns if c not in order]], supervisor
 
 
+def supervisor_comparison(
+    frame: pd.DataFrame, skill_names: list[str], supervisor: Supervisor, test_start: str = TEST_START
+) -> pd.DataFrame:
+    """For the report: the chosen supervisor, the best per-ticker one, and equal-weight.
+
+    Each on the scored tuning dates (the warm-up rule of ``tune_supervisor``) and
+    on the test period. The per-ticker one is tuned by the same rule.
+    """
+    from tsm.report import scored_rows
+
+    cutoff = frame.loc[frame["date"] < pd.Timestamp(test_start), "position"].max() - HORIZON_DAYS
+    warm = calibrated_from(frame)
+    start = warm if warm is not None and warm <= cutoff else frame["position"].min()
+
+    def scores(scored: pd.DataFrame, column: str) -> tuple[float, float]:
+        tuning = scored[(scored["position"] >= start) & (scored["position"] <= cutoff)]
+        test = scored_rows(scored, test_start)
+        return (
+            float(qlike(tuning["realized_vol"], tuning[column]).mean()),
+            float(qlike(test["realized_vol"], test[column]).mean()),
+        )
+
+    base = frame.drop(columns=[c for c in [f"w_{s}" for s in skill_names] + list(SUPERVISOR_COLUMNS) if c in frame.columns])
+    per_ticker = tune_supervisor(base, skill_names, before=test_start, modes=("per_ticker",))
+    rows = {}
+    for key, chosen in ((supervisor.mode, supervisor), ("per_ticker", per_ticker)):
+        if key in rows:
+            continue
+        tuning, test = scores(apply_supervisor(base, chosen, skill_names), "supervisor")
+        rows[key] = {"settings": f"window {chosen.window}, temperature {chosen.temperature}", "tuning": tuning, "test": test}
+    tuning, test = scores(base, "equal_weight")
+    rows["equal_weight"] = {"settings": "-", "tuning": tuning, "test": test}
+    return pd.DataFrame.from_dict(rows, orient="index")
+
+
 def earnings_comparison_from_artifacts(frame: pd.DataFrame, skill_names: list[str], test_start: str = TEST_START) -> dict:
     """The report's before/after table of the earnings layer, from the saved predictions alone.
 
@@ -368,12 +431,13 @@ def rebuild_from_artifacts() -> None:
     print(f"Re-tuning the supervisor on {len(frame)} saved predictions of {len(names)} skills...", flush=True)
     frame, supervisor = resupervise(frame, names)
     earnings = earnings_comparison_from_artifacts(frame, names) if meta.get("earnings", {}).get("enabled") else None
+    choice = supervisor_comparison(frame, names, supervisor)
     frame.to_csv(ARTIFACTS_DIR / "predictions.csv", index=False, float_format="%.6f")
     meta["supervisor"] = supervisor_settings(supervisor)
     meta["generated_at"] = date.today().isoformat()
     meta["supervisor_rebuilt_from_artifacts"] = True
     (ARTIFACTS_DIR / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
-    write_report(frame, meta, earnings=earnings)
+    write_report(frame, meta, earnings=earnings, supervisor_choice=choice)
     print(f"Done in {round(time.time() - started)}s. Supervisor: {meta['supervisor']}")
 
 
@@ -455,7 +519,7 @@ def main(argv: list[str] | None = None) -> None:
         "runtime_seconds": round(time.time() - started),
     }
     (ARTIFACTS_DIR / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
-    write_report(frame, meta, earnings=earnings)
+    write_report(frame, meta, earnings=earnings, supervisor_choice=supervisor_comparison(frame, names, supervisor))
     print(f"Done in {meta['runtime_seconds']}s. Supervisor: {meta['supervisor']}")
 
 

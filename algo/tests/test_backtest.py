@@ -266,3 +266,32 @@ def test_tickers_without_a_next_release_are_named():
         {"ticker": ["AAA", "AAA", "BBB"], "date": pd.to_datetime(["2026-07-30", "2026-11-02", "2026-07-30"])}
     )
     assert without_next_release(releases, ["AAA", "BBB", "SPY"], pd.Timestamp("2026-10-07")) == ["BBB", "SPY"]
+
+
+def test_pooled_weights_are_the_same_for_every_ticker_and_ignore_the_future(panel, monkeypatch):
+    """The pooled supervisor: one set of weights per date, and no information from the future."""
+    from tsm.supervisor import Supervisor
+
+    monkeypatch.setattr(backtest, "BACKTEST_START", START)
+    skills = [ShortTermSkill(), RegimeSkill(), WeakSignalsSkill()]
+    names = [s.name for s in skills]
+
+    def pooled(prices):
+        frame = backtest.add_targets_and_baselines(backtest.run_skills(prices, skills, start=START), prices, names)
+        return backtest.apply_supervisor(frame, Supervisor(window=20, temperature=0.05, mode="pooled"), names)
+
+    clean = pooled(panel)
+    weights = [f"w_{s}" for s in names]
+    assert (clean.groupby("date")[weights].nunique() == 1).all().all()
+    assert clean[weights].sum(axis=1).to_numpy() == pytest.approx(1)
+    assert clean[weights].std().max() > 0  # the weights do move
+
+    dirty = pooled(corrupt_after(panel, CUT))
+    # Weights on a date use outcomes known by then: a prediction at p is known at p + 5,
+    # and its outcome uses prices up to p + 5. Prices after CUT change outcomes from CUT - 5 on,
+    # known from CUT on, so every date before CUT must be unchanged.
+    before = clean["position"] < CUT
+    pd.testing.assert_frame_equal(
+        clean.loc[before, weights + ["supervisor", "confidence"]].reset_index(drop=True),
+        dirty.loc[dirty["position"] < CUT, weights + ["supervisor", "confidence"]].reset_index(drop=True),
+    )

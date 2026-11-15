@@ -67,7 +67,7 @@ const GLOSSARY = `# Glossary
 
 const METHODOLOGY = `# Methodology
 
-Five separate models (HAR-RV with the earnings jump, GARCH, Boosting, our own iTransformer and the ST-GNN, a graph network over how stocks move together) each predict the next 5 trading days' volatility on their own. Every day, for every stock, a supervisor scores each model on its last 60 to 120 predictions whose outcome is already known and gives better scorers more weight; the weights add up to 100%. The final prediction is the weighted combination, shown next to the HAR-RV baseline.
+Five separate models (HAR-RV with the earnings jump, GARCH, Boosting, our own iTransformer and the ST-GNN, a graph network over how stocks move together) each predict the next 5 trading days' volatility on their own. Every day a supervisor scores each model over the last 250 trading days, on all stocks together and only on predictions whose outcome is already known, and gives better scorers more weight; the weights add up to 100% and are the same for every stock on a given day. The final prediction is the weighted combination, shown next to the HAR-RV baseline.
 
 Each model's output is calibrated before it is compared. In earnings weeks the engine adds the stock's typical earnings jump, estimated only from earlier reports.
 
