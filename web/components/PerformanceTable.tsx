@@ -1,3 +1,4 @@
+import { GainBreakdown } from "@/components/GainBreakdown";
 import type { PerformanceResponse } from "@/lib/api/types";
 import {
   bestModels,
@@ -54,6 +55,8 @@ export function PerformanceTable({ data }: { data: PerformanceResponse }) {
           supervisor is tuned for.
         </p>
       </section>
+
+      {data.gain_breakdown ? <GainBreakdown data={data.gain_breakdown} /> : null}
 
       <section aria-labelledby="metrics-heading" className="overflow-hidden rounded-lg border border-border bg-surface">
         <div className="border-b border-border p-5">

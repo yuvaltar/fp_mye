@@ -159,3 +159,38 @@ test("baselineSentence", () => {
   );
   assert.equal(baselineSentence(0.2, 0), null);
 });
+
+
+import { breakdownSentences } from "./derive.ts";
+import type { GainBreakdown } from "./api/types.ts";
+
+function breakdown(modelsOnly: number, ordinary: number): GainBreakdown {
+  const row = (name: GainBreakdown["rows"][number]["name"], qlike: number, gain: number, ordinaryGain: number) => ({
+    name, qlike, qlike_ordinary: qlike, qlike_earnings: qlike,
+    qlike_vs_har_rv: gain, qlike_ordinary_vs_har_rv: ordinaryGain, qlike_earnings_vs_har_rv: gain,
+  });
+  return {
+    earnings_week_share: 0.08,
+    rows: [
+      row("har_rv", 0.546, 0, 0),
+      row("har_rv_earnings", 0.4881, 0.106, 0.002),
+      row("committee_no_earnings", 0.4729, modelsOnly, 0.143),
+      row("supervisor", 0.4141, 0.242, ordinary),
+    ],
+  };
+}
+
+test("breakdownSentences states each part from the data", () => {
+  const sentences = breakdownSentences(breakdown(0.134, 0.16));
+  assert.equal(sentences.length, 3);
+  assert.match(sentences[0], /\+10\.6%/);
+  assert.match(sentences[1], /\+13\.4%/);
+  assert.match(sentences[2], /\+16\.0%/);
+  assert.match(sentences[2], /\+15\.2%/);
+  assert.match(sentences[2], /not just the earnings calendar/);
+});
+
+test("breakdownSentences makes no claim the data does not support", () => {
+  assert.doesNotMatch(breakdownSentences(breakdown(-0.01, 0.16)).join(" "), /not just the earnings calendar/);
+  assert.doesNotMatch(breakdownSentences(breakdown(0.134, -0.02)).join(" "), /not just the earnings calendar/);
+});

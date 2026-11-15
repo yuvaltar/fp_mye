@@ -134,3 +134,19 @@ def test_every_earnings_week_has_a_report_date():
     gap = (pd.to_datetime(merged["reaction_date"]) - pd.to_datetime(merged["report_date"])).dt.days
     assert gap.between(0, 4).all()  # same day, the next trading day (over a weekend at most), or Saturday -> Monday
     assert (gap > 0).any() and (gap == 0).any()
+
+
+def test_gain_breakdown_matches_the_published_report():
+    """The "Where the gain comes from" table of docs/backtest.md, served by /performance."""
+    text = (DOCS_DIR / "backtest.md").read_text(encoding="utf-8")
+    rows = {r["name"]: r for r in api.performance()["gain_breakdown"]["rows"]}
+    section = text[text.index("## Where the gain comes from"):]
+    for name, label in (
+        ("har_rv", "HAR-RV (the baseline)"),
+        ("har_rv_earnings", "HAR-RV + earnings layer"),
+        ("committee_no_earnings", "Our committee, no earnings layer"),
+        ("supervisor", "Our committee + earnings layer (the product)"),
+    ):
+        line = next(l for l in section.splitlines() if label in l)
+        for key in ("qlike", "qlike_ordinary", "qlike_earnings"):
+            assert f"{rows[name][key]:.4f}" in line

@@ -219,7 +219,7 @@ def _performance() -> dict:
             }
         )
     supervisor, baseline = float(table.loc["supervisor", "QLIKE"]), float(table.loc[BASELINE, "QLIKE"])
-    return {
+    body = {
         "generated_at": meta.get("generated_at", meta["last_date"]),
         "model_version": meta["model_version"],
         "period_start": rows["date"].min().date().isoformat(),
@@ -256,6 +256,16 @@ def _performance() -> dict:
             for ticker, row in per_ticker.iterrows()
         ],
     }
+    breakdown = numbers["breakdown"]
+    if breakdown is not None:
+        body["gain_breakdown"] = {
+            "earnings_week_share": breakdown.attrs["earnings_share"],
+            "rows": [
+                {"name": str(name), **{key: float(value) for key, value in row.items()}}
+                for name, row in breakdown.iterrows()
+            ],
+        }
+    return body
 
 
 @app.get("/performance")

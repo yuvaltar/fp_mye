@@ -33,6 +33,27 @@ Lower is better for all three metrics. The "vs HAR-RV" columns are the improveme
 
 The baseline is the skill `short_term` without the earnings jump; the `short_term` row has it.
 
+## Where the gain comes from
+
+Earnings reports raise volatility, and knowing the dates helps any model. To separate that from what our models
+add, the table scores the same test rows four ways. Earnings weeks (a report's market reaction falls in the 5
+days forecast) are 7.8% of the forecasts.
+
+| Model | QLIKE | vs HAR-RV | Ordinary weeks | vs HAR-RV | Earnings weeks | vs HAR-RV |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| HAR-RV (the baseline) | 0.5460 | — | 0.4822 | — | 1.2996 | — |
+| HAR-RV + earnings layer | 0.4881 | +10.6% | 0.4810 | +0.2% | 0.5718 | +56.0% |
+| Our committee, no earnings layer | 0.4729 | +13.4% | 0.4132 | +14.3% | 1.1785 | +9.3% |
+| **Our committee + earnings layer (the product)** | 0.4141 | +24.2% | 0.4051 | +16.0% | 0.5200 | +60.0% |
+
+- **The earnings layer alone** takes HAR-RV from 0.5460 to 0.4881
+  (+10.6%).
+- **Our models alone**, with no earnings information, reach 0.4729
+  (+13.4%).
+- **In ordinary weeks** (no report in the 5 days, 92% of forecasts), the product is +16.0% better than HAR-RV.
+- Against the fairer baseline that also knows the earnings dates (HAR-RV + earnings layer), the product is
+  +15.2% better.
+
 ## Before vs after calibration
 
 Every skill's prediction is multiplied by a factor `c = sqrt(mean((realized / predicted)^2))`, recomputed

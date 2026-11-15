@@ -317,6 +317,43 @@
               "baseline_qlike": { "type": "number", "minimum": 0 }
             }
           }
+        },
+        "gain_breakdown": {
+          "type": "object",
+          "description": "Where the gain over HAR-RV comes from: the earnings layer alone, our models alone, and both, on the same test rows (all, ordinary weeks, earnings weeks). Absent when the engine runs without the earnings layer.",
+          "additionalProperties": false,
+          "required": ["earnings_week_share", "rows"],
+          "properties": {
+            "earnings_week_share": {
+              "type": "number", "minimum": 0, "maximum": 1,
+              "description": "Share of scored forecasts whose 5 days hold an earnings reaction."
+            },
+            "rows": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "name", "qlike", "qlike_ordinary", "qlike_earnings",
+                  "qlike_vs_har_rv", "qlike_ordinary_vs_har_rv", "qlike_earnings_vs_har_rv"
+                ],
+                "properties": {
+                  "name": {
+                    "enum": ["har_rv", "har_rv_earnings", "committee_no_earnings", "supervisor"],
+                    "description": "har_rv: plain HAR-RV. har_rv_earnings: HAR-RV with the earnings layer. committee_no_earnings: our skills and supervisor without the earnings layer. supervisor: the product, both together."
+                  },
+                  "qlike": { "type": "number", "minimum": 0 },
+                  "qlike_ordinary": { "type": "number", "minimum": 0 },
+                  "qlike_earnings": { "type": "number", "minimum": 0 },
+                  "qlike_vs_har_rv": { "type": "number", "description": "1 - qlike / HAR-RV's qlike, a decimal; 0 on the har_rv row." },
+                  "qlike_ordinary_vs_har_rv": { "type": "number" },
+                  "qlike_earnings_vs_har_rv": { "type": "number" }
+                }
+              }
+            }
+          }
         }
       }
     },

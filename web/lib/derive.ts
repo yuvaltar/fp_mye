@@ -12,6 +12,8 @@ import type {
   SkillPrediction,
   TickerPerformance,
   WeightsPoint,
+  GainBreakdown,
+  GainBreakdownRow,
 } from "./api/types.ts";
 import { formatMetric, formatShare, formatSignedPercent, formatVol } from "./format.ts";
 
@@ -503,4 +505,60 @@ export function sparklinePath(
     drawing = true;
   });
   return path.trim();
+}
+
+
+/** "improve HAR-RV by +10.6%" for a gain, "do not beat HAR-RV (-1.2%)" otherwise. */
+function gainPhrase(gain: number): string {
+  return gain > 0 ? `improve on HAR-RV by ${formatSignedPercent(gain)}` : `do not beat HAR-RV (${formatSignedPercent(gain)})`;
+}
+
+/** One row of /performance's gain_breakdown by name, or undefined. */
+export function breakdownRow(
+  breakdown: GainBreakdown,
+  name: GainBreakdownRow["name"],
+): GainBreakdownRow | undefined {
+  return breakdown.rows.find((row) => row.name === name);
+}
+
+/**
+ * The plain sentences under "Where the improvement comes from", built only from the response.
+ * The closing claim ("not just the earnings calendar") is made only when the data supports it:
+ * our skills beat HAR-RV with no earnings information, and the product beats HAR-RV in ordinary weeks.
+ */
+export function breakdownSentences(breakdown: GainBreakdown): string[] {
+  const withEarnings = breakdownRow(breakdown, "har_rv_earnings");
+  const modelsOnly = breakdownRow(breakdown, "committee_no_earnings");
+  const product = breakdownRow(breakdown, "supervisor");
+  const sentences: string[] = [];
+  if (withEarnings) {
+    sentences.push(`Earnings dates alone ${gainPhrase(withEarnings.qlike_vs_har_rv)}.`);
+  }
+  if (modelsOnly) {
+    sentences.push(
+      `Our skills alone, with no earnings information at all, ${gainPhrase(modelsOnly.qlike_vs_har_rv)}.`,
+    );
+  }
+  if (product) {
+    const ordinary = product.qlike_ordinary_vs_har_rv;
+    let text =
+      ordinary > 0
+        ? `In ordinary weeks, with no report in sight, the product's error is ${formatSignedPercent(ordinary)} lower than HAR-RV's`
+        : `In ordinary weeks, with no report in sight, the product does not beat HAR-RV (${formatSignedPercent(ordinary)})`;
+    if (withEarnings && withEarnings.qlike > 0) {
+      text += `; against a HAR-RV that also knows the earnings dates, its error is ${formatSignedPercent(1 - product.qlike / withEarnings.qlike)} lower`;
+    }
+    text += ".";
+    if (modelsOnly && modelsOnly.qlike_vs_har_rv > 0 && product.qlike_ordinary_vs_har_rv > 0) {
+      text += " So the result is not just the earnings calendar.";
+    }
+    sentences.push(text);
+  }
+  return sentences;
+}
+
+/** Bar length (0..1) per breakdown row: its gain over HAR-RV relative to the largest gain; 0 for none or a loss. */
+export function breakdownBarShare(breakdown: GainBreakdown, row: GainBreakdownRow): number {
+  const largest = Math.max(...breakdown.rows.map((r) => r.qlike_vs_har_rv));
+  return largest > 0 ? Math.max(0, row.qlike_vs_har_rv / largest) : 0;
 }

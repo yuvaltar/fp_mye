@@ -272,7 +272,97 @@ def backtest_numbers(frame: pd.DataFrame, meta: dict) -> dict:
         "per_ticker": per_ticker.loc[order],
         "wins": int((per_ticker["supervisor"] < per_ticker[BASELINE]).sum()),
         "weights": rows[[f"w_{s}" for s in skill_names]].agg(["mean", "min", "max"]).T,
+        "breakdown": gain_breakdown(frame, meta),
     }
+
+
+BREAKDOWN_ROWS = ("har_rv", "har_rv_earnings", "committee_no_earnings", "supervisor")
+
+
+def gain_breakdown(frame: pd.DataFrame, meta: dict) -> pd.DataFrame | None:
+    """Where the gain over HAR-RV comes from: the earnings layer, the models, or both.
+
+    Four rows on the scored test rows, each with QLIKE overall, in ordinary weeks and in
+    earnings weeks, and its improvement over HAR-RV:
+
+    - ``har_rv``: plain HAR-RV, the baseline;
+    - ``har_rv_earnings``: HAR-RV with the earnings jump (the skill ``short_term``);
+    - ``committee_no_earnings``: the same skills and supervisor settings without the jump
+      (each model's own prediction, calibrated by the usual rule, then the supervisor);
+    - ``supervisor``: the product, both together.
+
+    Computed from the saved predictions alone, so the API can serve it. None without
+    the earnings layer, where there is nothing to separate.
+    """
+    if not meta.get("earnings", {}).get("enabled"):
+        return None
+    from tsm.backtest import BASELINE_SKILL, apply_supervisor, calibrate
+    from tsm.supervisor import Supervisor
+
+    skill_names = [s["name"] for s in meta["skills"]]
+    plain = frame[["date", "ticker", "position", "realized_vol", "earnings_week"]].copy()
+    for name in skill_names:
+        plain[f"pred_{name}"] = frame[f"raw_pred_{name}"]
+    plain = apply_supervisor(calibrate(plain, skill_names), Supervisor(**meta["supervisor"]), skill_names)
+    columns = {
+        "har_rv": frame[BASELINE],
+        "har_rv_earnings": frame[f"pred_{BASELINE_SKILL}"],
+        "committee_no_earnings": plain["supervisor"],
+        "supervisor": frame["supervisor"],
+    }
+    keep = scored_rows(frame, meta["test_start"]).index
+    week = frame.loc[keep, "earnings_week"].astype(bool)
+    if not week.any() or week.all():
+        return None  # nothing to split
+    realized = frame.loc[keep, "realized_vol"]
+    table = {}
+    for name in BREAKDOWN_ROWS:
+        loss = qlike(realized, columns[name].loc[keep])
+        table[name] = {"qlike": loss.mean(), "qlike_ordinary": loss[~week].mean(), "qlike_earnings": loss[week].mean()}
+    out = pd.DataFrame(table).T
+    for kind in ("qlike", "qlike_ordinary", "qlike_earnings"):
+        out[f"{kind}_vs_har_rv"] = 1 - out[kind] / out.loc["har_rv", kind]
+    out.attrs["earnings_share"] = float(week.mean())
+    return out
+
+
+def breakdown_section(breakdown: pd.DataFrame) -> str:
+    """The "Where the gain comes from" section of the report."""
+    labels = {
+        "har_rv": "HAR-RV (the baseline)",
+        "har_rv_earnings": "HAR-RV + earnings layer",
+        "committee_no_earnings": "Our committee, no earnings layer",
+        "supervisor": "**Our committee + earnings layer (the product)**",
+    }
+    lines = [
+        "| Model | QLIKE | vs HAR-RV | Ordinary weeks | vs HAR-RV | Earnings weeks | vs HAR-RV |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for name, row in breakdown.iterrows():
+        cells = []
+        for kind in ("qlike", "qlike_ordinary", "qlike_earnings"):
+            gain = "—" if name == "har_rv" else f"{100 * row[f'{kind}_vs_har_rv']:+.1f}%"
+            cells.append(f"{row[kind]:.4f} | {gain}")
+        lines.append(f"| {labels[name]} | {' | '.join(cells)} |")
+    b = breakdown
+    ordinary_gain = 100 * b.loc["supervisor", "qlike_ordinary_vs_har_rv"]
+    fair_gain = 100 * (1 - b.loc["supervisor", "qlike"] / b.loc["har_rv_earnings", "qlike"])
+    return f"""## Where the gain comes from
+
+Earnings reports raise volatility, and knowing the dates helps any model. To separate that from what our models
+add, the table scores the same test rows four ways. Earnings weeks (a report's market reaction falls in the 5
+days forecast) are {b.attrs['earnings_share']:.1%} of the forecasts.
+
+{chr(10).join(lines)}
+
+- **The earnings layer alone** takes HAR-RV from {b.loc['har_rv', 'qlike']:.4f} to {b.loc['har_rv_earnings', 'qlike']:.4f}
+  ({100 * b.loc['har_rv_earnings', 'qlike_vs_har_rv']:+.1f}%).
+- **Our models alone**, with no earnings information, reach {b.loc['committee_no_earnings', 'qlike']:.4f}
+  ({100 * b.loc['committee_no_earnings', 'qlike_vs_har_rv']:+.1f}%).
+- **In ordinary weeks** (no report in the 5 days, {1 - b.attrs['earnings_share']:.0%} of forecasts), the product is {ordinary_gain:+.1f}% better than HAR-RV.
+- Against the fairer baseline that also knows the earnings dates (HAR-RV + earnings layer), the product is
+  {fair_gain:+.1f}% better.
+"""
 
 
 def supervisor_text(settings: dict) -> str:
@@ -421,6 +511,8 @@ def write_report(
         else ""
     )
     earnings_text = "\n" + earnings_section(earnings, skill_names) if earnings is not None else ""
+    breakdown = numbers["breakdown"]
+    breakdown_text = "\n" + breakdown_section(breakdown) if breakdown is not None else ""
     choice_text = (
         "\n" + supervisor_section(supervisor_choice, loss_difference_tstat(rows, reference="equal_weight"))
         if supervisor_choice is not None
@@ -450,7 +542,7 @@ Lower is better for all three metrics. The "vs HAR-RV" columns are the improveme
 {_markdown_table(table, labels)}
 
 {baseline_note}
-
+{breakdown_text}
 ## Before vs after calibration
 
 Every skill's prediction is multiplied by a factor `c = sqrt(mean((realized / predicted)^2))`, recomputed

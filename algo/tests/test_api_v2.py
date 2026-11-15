@@ -41,6 +41,7 @@ def frame() -> pd.DataFrame:
             }
             for skill, weight in zip(SKILLS, weights):
                 row[f"pred_{skill['name']}"] = 0.2 * np.exp(rng.normal(0, 0.2))
+                row[f"raw_pred_{skill['name']}"] = row[f"pred_{skill['name']}"] * 0.9
                 row[f"w_{skill['name']}"] = weight
             row["equal_weight"] = np.mean([row[f"pred_{s['name']}"] for s in SKILLS])
             row["baseline"] = 0.2 * np.exp(rng.normal(0, 0.25))
@@ -167,3 +168,28 @@ def test_without_the_earnings_layer_short_term_is_the_baseline_row(artifacts):
     api.clear_cache()
     names = [m["name"] for m in api.performance()["models"]]
     assert "har_rv" in names and "short_term" not in names
+
+
+def test_performance_breaks_the_gain_down(artifacts):
+    """gain_breakdown: HAR-RV, HAR-RV + earnings, our committee without earnings, the product."""
+    body = api.performance()
+    validator("PerformanceResponse").validate(body)
+    breakdown = body["gain_breakdown"]
+    rows = {r["name"]: r for r in breakdown["rows"]}
+    assert list(rows) == ["har_rv", "har_rv_earnings", "committee_no_earnings", "supervisor"]
+    models = {m["name"]: m for m in body["models"]}
+    assert rows["har_rv"]["qlike"] == pytest.approx(models["har_rv"]["qlike"])
+    assert rows["har_rv_earnings"]["qlike"] == pytest.approx(models["short_term"]["qlike"])
+    assert rows["supervisor"]["qlike"] == pytest.approx(models["supervisor"]["qlike"])
+    assert rows["har_rv"]["qlike_vs_har_rv"] == 0
+    assert rows["supervisor"]["qlike_vs_har_rv"] == pytest.approx(body["headline"]["improvement"])
+    # 3 tickers x 35 scored dates, JPM's 5 earnings weeks among them.
+    assert breakdown["earnings_week_share"] == pytest.approx(5 / 105)
+
+
+def test_no_breakdown_without_the_earnings_layer(artifacts):
+    write(artifacts, earnings_enabled=False)
+    api.clear_cache()
+    body = api.performance()
+    validator("PerformanceResponse").validate(body)
+    assert "gain_breakdown" not in body
