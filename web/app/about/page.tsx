@@ -13,7 +13,7 @@ const STEPS = [
   },
   {
     title: "The supervisor weighs",
-    text: "Every day, for every stock, the supervisor checks how well each model did on its last 60 predictions whose outcome is already known, and gives better scorers more weight. The weights always add up to 100%.",
+    text: "Every day, the supervisor checks how well each model did over roughly the last year (250 trading days), on all 52 stocks together and only on predictions whose outcome is already known, and gives better scorers more weight. Judging on all stocks at once gives it far more evidence than one stock's history, so the weights can really differ. The weights always add up to 100% and are the same for every stock on a given day.",
   },
   {
     title: "The market decides",

@@ -158,6 +158,23 @@ export interface TickerPerformance {
   baseline_qlike: number;
 }
 
+/** Mirrors $defs/PerformanceResponse.gain_breakdown.rows[] items. The *_vs_har_rv fields are decimals. */
+export interface GainBreakdownRow {
+  name: "har_rv" | "har_rv_earnings" | "committee_no_earnings" | "supervisor";
+  qlike: number;
+  qlike_ordinary: number;
+  qlike_earnings: number;
+  qlike_vs_har_rv: number;
+  qlike_ordinary_vs_har_rv: number;
+  qlike_earnings_vs_har_rv: number;
+}
+
+/** Mirrors $defs/PerformanceResponse.gain_breakdown: where the gain over HAR-RV comes from. */
+export interface GainBreakdown {
+  earnings_week_share: number;
+  rows: GainBreakdownRow[];
+}
+
 /** Mirrors $defs/PerformanceResponse (response of GET /performance). */
 export interface PerformanceResponse {
   generated_at: string;
@@ -171,6 +188,8 @@ export interface PerformanceResponse {
   models: ModelPerformance[];
   skill_weights: SkillWeightSummary[];
   per_ticker: TickerPerformance[];
+  /** Absent when the engine runs without the earnings layer. */
+  gain_breakdown?: GainBreakdown;
 }
 
 /** Mirrors $defs/Error (body of a non-200 response). */

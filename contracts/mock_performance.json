@@ -137,5 +137,46 @@
       "supervisor_qlike": 0.3922,
       "baseline_qlike": 0.4252
     }
-  ]
+  ],
+  "gain_breakdown": {
+    "earnings_week_share": 0.078,
+    "rows": [
+      {
+        "name": "har_rv",
+        "qlike": 0.546,
+        "qlike_ordinary": 0.4822,
+        "qlike_earnings": 1.2996,
+        "qlike_vs_har_rv": 0,
+        "qlike_ordinary_vs_har_rv": 0,
+        "qlike_earnings_vs_har_rv": 0
+      },
+      {
+        "name": "har_rv_earnings",
+        "qlike": 0.4881,
+        "qlike_ordinary": 0.481,
+        "qlike_earnings": 0.5718,
+        "qlike_vs_har_rv": 0.106,
+        "qlike_ordinary_vs_har_rv": 0.0025,
+        "qlike_earnings_vs_har_rv": 0.56
+      },
+      {
+        "name": "committee_no_earnings",
+        "qlike": 0.4729,
+        "qlike_ordinary": 0.4132,
+        "qlike_earnings": 1.1785,
+        "qlike_vs_har_rv": 0.1339,
+        "qlike_ordinary_vs_har_rv": 0.1431,
+        "qlike_earnings_vs_har_rv": 0.0932
+      },
+      {
+        "name": "supervisor",
+        "qlike": 0.4141,
+        "qlike_ordinary": 0.4051,
+        "qlike_earnings": 0.52,
+        "qlike_vs_har_rv": 0.2416,
+        "qlike_ordinary_vs_har_rv": 0.1599,
+        "qlike_earnings_vs_har_rv": 0.5999
+      }
+    ]
+  }
 }
