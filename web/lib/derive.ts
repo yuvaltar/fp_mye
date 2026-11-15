@@ -62,7 +62,7 @@ export function relativeDifference(value: number, reference: number): number | n
 
 /**
  * Display names for skills. The engine's real members are short_term (HAR-RV),
- * regime (GARCH), weak_signals (Boosting) and itransformer (our own iTransformer; it replaced multivariate); the
+ * regime (GARCH), weak_signals (Boosting), itransformer (our own iTransformer; it replaced multivariate) and stgnn (ST-GNN); the
  * trend/seasonality names come from the contract mocks. Unknown names (for
  * example the coming iTransformer with a relationship map) fall back to
  * auto-formatting, so nothing here is a fixed list.
@@ -72,6 +72,7 @@ const KNOWN_SKILL_LABELS: Record<string, string> = {
   regime: "GARCH",
   weak_signals: "Boosting",
   itransformer: "iTransformer",
+  stgnn: "ST-GNN",
   multivariate: "iTransformer",
   short_trend: "Short trend",
   medium_trend: "Medium trend",
@@ -84,6 +85,7 @@ const KNOWN_SKILL_INFO: Record<string, string> = {
   regime: "A classic model: storms persist, then volatility drifts back to its average.",
   weak_signals: "Decision trees on trading volume, daily range and opening gaps.",
   itransformer: "Our own deep network, which reads all the stocks together (average of three training runs).",
+  stgnn: "A small network per stock plus one layer over the map of how stocks move together (average of three training runs). Weakest alone, but its different errors improve the committee.",
   multivariate: "A deep network that reads all the stocks together.",
 };
 
@@ -101,6 +103,7 @@ const KNOWN_SKILL_COLOR: Record<string, number> = {
   weak_signals: 1,
   regime: 2,
   itransformer: 3,
+  stgnn: 4,
   multivariate: 3,
   short_trend: 0,
   medium_trend: 2,

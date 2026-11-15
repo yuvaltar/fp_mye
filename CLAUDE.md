@@ -14,7 +14,7 @@ The team is 3 junior developers (B.Sc. Computer Science) who do not write code t
 - **Team:** Elie and Yuval share `/algo`; Maor owns `/web`. Elie was away from 2026-10-12 and **returned on 2026-10-22**; Elie works on the supervisor and the ST-GNN on branch `algo-elie`. Yuval built the iTransformer, the market map, the earnings layer and contract v2 on the server side.
 - **Trust:** every collaborator may change any file in the repository without asking the others first; the team trusts each other. Changes still go through a PR, so everyone sees them before they reach `main`.
   
-- **Timeline:** the 7-day plan in `docs/plan.md` ended on 2026-10-14; `docs/handoff.md` later estimated the real deadline at about 2026-10-22. No newer date is recorded.
+- **Timeline:** the 7-day plan in `docs/plan.md` ended on 2026-10-14; `docs/handoff.md` later estimated the real deadline at about 2026-10-22. On 2026-10-28 Elie set a provisional defence date of the week of 2026-11-02; the exact date is not known yet.
 
 ## Hard rules
 
@@ -32,7 +32,7 @@ The team is 3 junior developers (B.Sc. Computer Science) who do not write code t
 - `docs/` — `plan.md` (7-day plan), `backtest.md` (the committee's results), `experiments.md` (one row per candidate run) and `handoff.md` (Yuval's session notes up to Step 14). The two results files are generated; do not hand-edit them.
 - `.claude/skills/` — `add-temporal-skill` and `backtest-report`. Use them rather than improvising those two procedures.
 
-The engine in `algo` is implemented end to end (data, four skills, calibration, supervisor, backtest, report, API, experiment runner). The website (watchlist, stock page, performance, about) and contract v2 were merged into `main` in PR #9; it reads the API, or the mocks with `NEXT_PUBLIC_USE_MOCKS=true`.
+The engine in `algo` is implemented end to end (data, five skills, calibration, supervisor, backtest, report, API, experiment runner). The website (watchlist, stock page, performance, about) and contract v2 were merged into `main` in PR #9, and an AI assistant (Gemini, with an MCP server) in PR #14; it reads the API, or the mocks with `NEXT_PUBLIC_USE_MOCKS=true`.
 
 ## How the engine fits together
 
